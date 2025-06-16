@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="140" height="40" viewBox="0 0 140 40" xmlns="http://www.w3.org/2000/svg">
+    <style>
+        .text-white { fill: #343a40; }
+        .text-blue { fill: #007BFF; }
+    </style>
+    <text x="5" y="25" class="text-white" font-family="Arial" font-size="22" font-weight="bold">Chip</text>
+    <text x="60" y="25" class="text-blue" font-family="Arial" font-size="22" font-weight="bold">Sight</text>
+    <text x="5" y="35" class="text-white" font-family="Arial" font-size="8">We See every Cut.</text>
+</svg> 

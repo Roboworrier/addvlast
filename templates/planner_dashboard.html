@@ -1,0 +1,603 @@
+{% extends "base.html" %}
+{% block content %}
+
+<script type="text/javascript">
+    var chartData = {
+        project: {
+            names: {{ project_names|tojson|safe }},
+            completion: {{ project_completion|tojson|safe }},
+            colors: {{ project_colors|tojson|safe }},
+            borderColors: {{ project_border_colors|tojson|safe }}
+        },
+        timeline: {
+            dates: {{ timeline_dates|tojson|safe }},
+            targetProduction: {{ target_production|tojson|safe }},
+            actualProduction: {{ actual_production|tojson|safe }}
+        },
+        machine: {
+            names: {{ machine_names|tojson|safe }},
+            workload: {{ machine_workload|tojson|safe }}
+        }
+    };
+    window.chartData = chartData;
+</script>
+<!-- 
+
+-->
+<div class="container-fluid">
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Active Projects</h6>
+                    <h2 class="mb-0">{{ active_projects }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h6 class="card-title">On-Time Projects</h6>
+                    <h2 class="mb-0">{{ on_time_projects }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <h6 class="card-title">Delayed Projects</h6>
+                    <h2 class="mb-0">{{ delayed_projects }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Total Drawings</h6>
+                    <h2 class="mb-0">{{ total_drawings }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Production Timeline -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Production Timeline</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-description">This line chart shows the planned (target) and actual production for each hour of the current day.</div>
+                    <div class="chart-container">
+                        <canvas id="productionTimelineChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Project Progress and Machine Workload -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="fas fa-tasks me-2"></i>Project Progress</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-description">This bar chart shows the completion percentage for each project.</div>
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="projectProgressChart"></canvas>
+                    </div>
+                    
+                    <!-- Project Progress Table -->
+                    <div class="table-responsive mt-4">
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>Project Name</th>
+                                    <th>Completion %</th>
+                                    <th>Progress</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for i in range(project_names|length) %}
+                                <tr>
+                                    <td>{{ project_names[i] }}</td>
+                                    <td>{{ "%.1f"|format(project_completion[i]) }}%</td>
+                                    <td>
+                                        <div class="progress">
+                                            <div class="progress-bar" role="progressbar" 
+                                                 style="width: {{ project_completion[i] }}%; background-color: {{ project_colors[i] }};"
+                                                 aria-valuenow="{{ project_completion[i] }}" 
+                                                 aria-valuemin="0" 
+                                                 aria-valuemax="100">
+                                                {{ "%.1f"|format(project_completion[i]) }}%
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="fas fa-industry me-2"></i>Machine Workload</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-description">This bar chart shows the current workload percentage for each machine.</div>
+                    <div class="chart-container">
+                        <canvas id="machineWorkloadChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Production Plan Upload -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-file-upload me-2"></i>Upload Production Plan</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label class="form-label">Upload Production Plan (.xlsx)</label>
+                    <input class="form-control" type="file" name="production_plan_file" accept=".xlsx" required>
+                    <small class="text-muted">File must contain: project_code, drawing_number, sap_id, quantity, completion_date</small>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-upload me-2"></i>Upload Plan
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Production Plan Table with Search -->
+    <div class="card mb-4">
+        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-table me-2"></i>Production Plan (As Uploaded)</span>
+            <input type="text" id="planSearchInput" class="form-control w-auto" placeholder="Search..." style="max-width: 250px;">
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover" id="productionPlanTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Project Code</th>
+                            <th>Project Name</th>
+                            <th>SAP ID</th>
+                            <th>End Product</th>
+                            <th>Qty</th>
+                            <th>ST</th>
+                            <th>CT</th>
+                            <th>Completion Date</th>
+                            <th>Completed</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in production_plan_rows %}
+                        <tr>
+                            <td>{{ row.project_code }}</td>
+                            <td>{{ row.project_name }}</td>
+                            <td>{{ row.sap_id }}</td>
+                            <td>{{ row.end_product }}</td>
+                            <td>{{ row.qty }}</td>
+                            <td>{{ row.st }}</td>
+                            <td>{{ row.ct }}</td>
+                            <td>{{ row.completion_date }}</td>
+                            <td>{{ row.completed }}</td>
+                            <td>{{ row.status }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bot Projects Table -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Bot Projects Overview</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover">
+                    <thead class="table-secondary">
+                        <tr>
+                            <th>Project Name</th>
+                            <th>Components</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for project in bot_projects %}
+                        <tr>
+                            <td>{{ project.name }}</td>
+                            <td>
+                                <ul class="list-unstyled mb-0">
+                                {% for comp in project.components %}
+                                    <li>
+                                        <span>{{ comp.name }} - {{ comp.status }}</span>
+                                        <span style="display:inline-block; margin-left:8px;">
+                                            <form method="POST" action="{{ url_for('planner_dashboard') }}" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this end product?');">
+                                                <input type="hidden" name="action" value="delete_end_product">
+                                                <input type="hidden" name="end_product_id" value="{{ comp.id }}">
+                                                <button type="submit" class="btn btn-sm btn-danger" title="Delete End Product"><i class="fas fa-trash"></i></button>
+                                            </form>
+                                        </span>
+                                    </li>
+                                {% endfor %}
+                                </ul>
+                            </td>
+                            <td>{{ project.status }}</td>
+                            <td>
+                                <!-- Project Delete Button -->
+                                <form method="POST" action="{{ url_for('planner_dashboard') }}" onsubmit="return confirm('Are you sure you want to delete this project and all its end products?');">
+                                    <input type="hidden" name="action" value="delete_project">
+                                    <input type="hidden" name="project_id" value="{{ project.id }}">
+                                    <button type="submit" class="btn btn-danger btn-sm"><i class="fas fa-trash me-1"></i>Delete Project</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Production Details Table -->
+    <div class="card">
+        <div class="card-header">
+            <h5>Production Details</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Bot ID</th>
+                            <th>Cycle Time</th>
+                            <th>Completion Date</th>
+                            <th>Quantity</th>
+                            <th>Produced</th>
+                            <th>Machine</th>
+                            <th>Tool</th>
+                            <th>Status</th>
+                            <th>Completed Time</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for bot in bots %}
+                        <tr>
+                            <td>{{ bot.bot_id }}</td>
+                            <td>{{ bot.cycle_time }}</td>
+                            <td>{{ bot.completion_date }}</td>
+                            <td>{{ bot.quantity }}</td>
+                            <td>{{ bot.produced }}</td>
+                            <td>{{ bot.machine }}</td>
+                            <td>{{ bot.tool }}</td>
+                            <td>{{ bot.status }}</td>
+                            <td>{{ bot.completed_time if bot.status == 'Completed' else '-' }}</td>
+                            <td><a href="/delete/{{ bot.bot_id }}" class="btn btn-danger btn-sm">Delete</a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- End Product Progress -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-tasks me-1"></i> End Product Progress
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Project</th>
+                            <th>End Product</th>
+                            <th>SAP ID</th>
+                            <th>Planned Qty</th>
+                            <th>Completed Qty</th>
+                            <th>Progress</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for project in projects %}
+                            {% for ep in project.end_products %}
+                                <tr>
+                                    <td>{{ project.project_name }}</td>
+                                    <td>{{ ep.name }}</td>
+                                    <td>{{ ep.sap_id }}</td>
+                                    <td>{{ ep.quantity }}</td>
+                                    <td class="completed-qty">{{ ep.completed }}</td>
+                                    <td style="width: 30%">
+                                        {% set progress = (ep.completed / ep.quantity * 100) if ep.quantity > 0 else 0 %}
+                                        <div class="progress">
+                                            <div id="progress-{{ ep.sap_id }}" 
+                                                 class="progress-bar {% if progress >= 90 %}bg-success{% elif progress >= 60 %}bg-warning{% else %}bg-danger{% endif %}"
+                                                 role="progressbar"
+                                                 style="width: {{ progress }}%"
+                                                 aria-valuenow="{{ progress }}"
+                                                 aria-valuemin="0"
+                                                 aria-valuemax="100">
+                                                {{ "%.1f"|format(progress) }}%
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+<style>
+    .chart-container {
+        position: relative;
+        height: 420px;
+        width: 100%;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    .chart-description {
+        font-size: 1rem;
+        color: #333;
+        margin-bottom: 0.5rem;
+        font-style: italic;
+    }
+</style>
+<script>
+    var socket = io();
+    
+    // Initialize Production Timeline Chart
+    var timelineChart = new Chart(document.getElementById('productionTimelineChart').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: {{ timeline_dates | tojson }},
+            datasets: [{
+                label: 'Target Production',
+                data: {{ target_production | tojson }},
+                borderColor: 'rgb(54, 162, 235)',
+                borderDash: [5, 5],
+                tension: 0.1,
+                fill: false
+            }, {
+                label: 'Actual Production',
+                data: {{ actual_production | tojson }},
+                borderColor: 'rgb(75, 192, 192)',
+                tension: 0.1,
+                fill: false
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Quantity'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Hour of Day'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        boxWidth: 20,
+                        font: { size: 14 },
+                        color: '#333'
+                    }
+                },
+                title: {
+                    display: true,
+                    text: 'Production Timeline (Today)',
+                    font: { size: 18 },
+                    color: '#222'
+                },
+                tooltip: {
+                    enabled: true,
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y}`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Initialize Project Progress Chart
+    var progressChart = new Chart(document.getElementById('projectProgressChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: {{ project_names | tojson }},
+            datasets: [{
+                label: 'Project Completion %',
+                data: {{ project_completion | tojson }},
+                backgroundColor: {{ project_colors | tojson }},
+                borderColor: {{ project_border_colors | tojson }},
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'Completion %'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Project Name'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        boxWidth: 20,
+                        font: { size: 14 },
+                        color: '#333'
+                    }
+                },
+                title: {
+                    display: true,
+                    text: 'Project Progress',
+                    font: { size: 18 },
+                    color: '#222'
+                },
+                tooltip: {
+                    enabled: true,
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y}%`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Initialize Machine Workload Chart
+    var workloadChart = new Chart(document.getElementById('machineWorkloadChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: {{ machine_names | tojson }},
+            datasets: [{
+                label: 'Current Machine Load %',
+                data: {{ machine_workload | tojson }},
+                backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                borderColor: 'rgb(75, 192, 192)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'Workload %'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Machine Name'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        boxWidth: 20,
+                        font: { size: 14 },
+                        color: '#333'
+                    }
+                },
+                title: {
+                    display: true,
+                    text: 'Machine Workload',
+                    font: { size: 18 },
+                    color: '#222'
+                },
+                tooltip: {
+                    enabled: true,
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y}%`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Socket.IO event handlers for real-time updates
+    socket.on('production_update', function(data) {
+        // Update timeline chart
+        timelineChart.data.labels = data.timeline_dates;
+        timelineChart.data.datasets[0].data = data.target_production;
+        timelineChart.data.datasets[1].data = data.actual_production;
+        timelineChart.update();
+    });
+
+    socket.on('project_update', function(data) {
+        // Update project progress chart
+        progressChart.data.labels = data.project_names;
+        progressChart.data.datasets[0].data = data.completion_rates;
+        progressChart.data.datasets[0].backgroundColor = data.colors;
+        progressChart.data.datasets[0].borderColor = data.border_colors;
+        progressChart.update();
+    });
+
+    socket.on('machine_update', function(data) {
+        // Update machine workload chart
+        workloadChart.data.labels = data.machine_names;
+        workloadChart.data.datasets[0].data = data.workload;
+        workloadChart.update();
+    });
+
+    // Client-side search for production plan table
+    const planSearchInput = document.getElementById('planSearchInput');
+    if (planSearchInput) {
+        planSearchInput.addEventListener('input', function() {
+            const filter = this.value.toLowerCase();
+            const table = document.getElementById('productionPlanTable');
+            const rows = table.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(filter) ? '' : 'none';
+            });
+        });
+    }
+</script>
+{% endblock %}

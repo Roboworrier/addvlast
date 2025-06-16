@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Operator Login - ChipSight{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white text-center">
+                    <h4><i class="fas fa-hard-hat me-2"></i>Operator Login</h4>
+                </div>
+                <div class="card-body p-4">
+                    <form method="POST" action="{{ url_for('operator_login') }}">
+                        <div class="mb-3">
+                            <label for="operator_name" class="form-label">Operator Name</label>
+                            <input type="text" class="form-control" id="operator_name" name="operator_name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="machine_name" class="form-label">Machine</label>
+                            <select class="form-select" id="machine_name" name="machine_name" required>
+                                <option value="" selected disabled>Select Machine...</option>
+                                <optgroup label="Leadwell Machines">
+                                    {% for machine_val, machine_display in machine_choices %}
+                                        {% if 'Leadwell' in machine_val %}
+                                            <option value="{{ machine_val }}" class="fw-bold text-success">{{ machine_display }}</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </optgroup>
+                                <optgroup label="VMC Machines">
+                                    {% for machine_val, machine_display in machine_choices %}
+                                        {% if 'VMC' in machine_val %}
+                                            <option value="{{ machine_val }}">{{ machine_display }}</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </optgroup>
+                                <optgroup label="HAAS Machines">
+                                    {% for machine_val, machine_display in machine_choices %}
+                                        {% if 'HAAS' in machine_val %}
+                                            <option value="{{ machine_val }}">{{ machine_display }}</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </optgroup>
+                            </select>
+                            <small class="form-text text-muted">Leadwell machines have dedicated operator panels.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="shift" class="form-label">Shift</label>
+                            <select class="form-select" id="shift" name="shift" required>
+                                <option value="" selected disabled>Select Shift...</option>
+                                <option value="A">Shift A</option>
+                                <option value="B">Shift B</option>
+                                <option value="C">Shift C</option>
+                                <!-- Add more shifts if needed -->
+                            </select>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-info btn-block text-white"><i class="fas fa-sign-in-alt me-2"></i>Login to Machine</button>
+                        </div>
+                    </form>
+                    <hr>
+                    <div class="text-center">
+                         <a href="{{ url_for('login_general') }}" class="btn btn-outline-secondary btn-sm mt-2">Planner/Manager/Quality Login</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Style for Leadwell machine options */
+    option.fw-bold {
+        font-weight: bold !important;
+    }
+    option.text-success {
+        color: #198754 !important;
+    }
+</style>
+{% endblock %} 

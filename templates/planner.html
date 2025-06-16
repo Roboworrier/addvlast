@@ -1,0 +1,497 @@
+{% extends "base.html" %}
+
+{% block title %}Planner Dashboard - ChipSight{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/planner.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+<style>
+  .chart-container { height: 300px; width: 100%; }
+  .search-container { margin-bottom: 2rem; background: #f8f9fa; padding: 1rem; border-radius: 8px; }
+  .search-results { margin-top: 1rem; display: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <!-- Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+  <!-- End Flash Messages -->
+
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Planner Dashboard</h2>
+    <div>
+      <a href="{{ url_for('live.download_live_dpr') }}" class="btn btn-success">
+        <i class="fas fa-download me-2"></i>Download Live DPR
+      </a>
+    </div>
+  </div>
+
+  <!-- Upload Production Plan -->
+  <div class="card mb-4">
+    <div class="card-header"><i class="fas fa-file-excel me-1"></i> Upload Production Plan</div>
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('planner_dashboard') }}" enctype="multipart/form-data">
+        <input class="form-control mb-3" type="file" name="production_plan_file" accept=".xlsx" required>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-upload me-2"></i>Upload</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Search Bar -->
+  <div class="search-container">
+    <div class="input-group">
+      <input type="text" id="sapIdSearch" class="form-control" placeholder="Search by SAP ID...">
+      <button class="btn btn-primary" onclick="searchDrawing()"><i class="fas fa-search"></i> Search</button>
+    </div>
+    <div id="searchResults" class="search-results">
+      <div class="card mt-3"><div class="card-body"><h5>Drawing Details</h5><div id="drawingDetails"></div></div></div>
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="row mb-4">
+    <div class="col-md-3">
+      <div class="card bg-primary text-white"><div class="card-body">
+        <h6>Total Production</h6>
+        <h3>{{ production_summary|sum(attribute='completed')|default(0) }}</h3>
+      </div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card bg-success text-white"><div class="card-body">
+        {% set planned = production_summary|sum(attribute='planned')|default(0) %}
+        {% set completed = production_summary|sum(attribute='completed')|default(0) %}
+        {% set rate = "%.1f"|format((completed / planned * 100)) if planned > 0 else '0.0' %}
+        <h6>Planned vs Actual</h6>
+        <h3>{{ rate }}%</h3>
+      </div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card bg-info text-white"><div class="card-body">
+        <h6>Active Projects</h6>
+        <h3>{{ projects|length }}</h3>
+      </div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card bg-warning text-dark"><div class="card-body">
+        <h6>Total Parts Planned</h6>
+        <h3>{{ production_summary|sum(attribute='planned')|default(0) }}</h3>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- Active Projects -->
+  <div class="card mb-4">
+    <div class="card-header"><i class="fas fa-project-diagram me-1"></i> Active Projects</div>
+    <div class="card-body">
+      {% if projects %}
+      <div class="table-responsive">
+        <table class="table table-bordered">
+          <thead>
+            <tr>
+              <th>Project Code</th><th>Project Name</th><th>End Product</th><th>SAP ID</th>
+              <th>Planned</th><th>Completed</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if projects|length == 0 %}
+            <tr><td colspan="100%" class="text-center text-muted">No records found</td></tr>
+            {% else %}
+            {% for project in projects %}
+            {% for ep in project.end_products %}
+            <tr>
+              {% if loop.first %}
+              <td rowspan="{{ project.end_products|length }}">{{ project.project_code }}</td>
+              <td rowspan="{{ project.end_products|length }}">{{ project.project_name }}</td>
+              {% endif %}
+              <td>{{ ep.name }}</td>
+              <td>{{ ep.sap_id }}</td>
+              <td>{{ ep.quantity }}</td>
+              <td>{{ ep.completed }}</td>
+              <td>
+                <form method="POST" action="{{ url_for('planner_dashboard') }}" class="d-inline" onsubmit="return confirm('Delete this end product?');">
+                  <input type="hidden" name="action" value="delete_end_product">
+                  <input type="hidden" name="end_product_id" value="{{ ep.id }}">
+                  <button class="btn btn-sm btn-danger">Delete EP</button>
+                </form>
+                {% if loop.first %}
+                <form method="POST" action="{{ url_for('planner_dashboard') }}" class="d-inline ms-1" onsubmit="return confirm('Delete this entire project?');">
+                  <input type="hidden" name="action" value="delete_project">
+                  <input type="hidden" name="project_id" value="{{ project.id }}">
+                  <button class="btn btn-sm btn-danger">Delete Project</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p>No active projects found.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Production Progress</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="productionProgressChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Daily Production</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="dailyProductionChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <!-- Time-based Production Chart -->
+  <div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Production Timeline</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container" style="height: 400px;">
+                    <canvas id="timelineChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <!-- Digital Twin Link -->
+  <div class="card mb-4">
+    <div class="card-header">Digital Twin</div>
+    <div class="card-body">
+      <a href="{{ url_for('digital_twin_dashboard') }}" class="btn btn-primary" target="_blank">
+        <i class="fas fa-cube me-2"></i>Open Digital Twin
+      </a>
+    </div>
+  </div>
+
+  <!-- Completed End Products -->
+  <div class="card mb-4">
+    <div class="card-header">Completed End Products</div>
+    <div class="card-body">
+      {% if completed_end_products %}
+      <ul>
+        {% for ep in completed_end_products %}
+        <li>{{ ep.name }} ({{ ep.sap_id }}) - {{ ep.completed }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p>No completed products.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Recent Quality, Rework, Scrap -->
+  <div class="row mb-4">
+    <div class="col-md-4">
+      <div class="card"><div class="card-header">Recent Quality Checks</div>
+      <div class="card-body">
+        {% if recent_quality_checks %}
+        <ul>{% for q in recent_quality_checks %}<li>{{ q.timestamp }} - {{ q.status }}</li>{% endfor %}</ul>
+        {% else %}<p>No recent checks.</p>{% endif %}
+      </div></div>
+    </div>
+    <div class="col-md-4">
+      <div class="card"><div class="card-header">Recent Rework</div>
+      <div class="card-body">
+        {% if recent_rework %}
+        <ul>{% for r in recent_rework %}<li>{{ r.timestamp }} - {{ r.reason }}</li>{% endfor %}</ul>
+        {% else %}<p>No recent rework.</p>{% endif %}
+      </div></div>
+    </div>
+    <div class="col-md-4">
+      <div class="card"><div class="card-header">Recent Scrap</div>
+      <div class="card-body">
+        {% if recent_scrap %}
+        <ul>{% for s in recent_scrap %}<li>{{ s.timestamp }} - {{ s.reason }}</li>{% endfor %}</ul>
+        {% else %}<p>No recent scrap.</p>{% endif %}
+      </div></div>
+    </div>
+  </div>
+</div>
+
+{% set prod_data = production_summary|tojson|default('[]', true) %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Get data from hidden fields
+    const rawProductionData = JSON.parse(document.getElementById('production-data').value || '[]');
+    
+    // Production Progress Chart
+    const productionProgressCtx = document.getElementById('productionProgressChart').getContext('2d');
+    new Chart(productionProgressCtx, {
+        type: 'bar',
+        data: {
+            labels: rawProductionData.map(d => d.name),
+            datasets: [{
+                label: 'Planned',
+                data: rawProductionData.map(d => d.planned),
+                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                borderColor: 'rgb(54, 162, 235)',
+                borderWidth: 1
+            }, {
+                label: 'Completed',
+                data: rawProductionData.map(d => d.completed),
+                backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                borderColor: 'rgb(75, 192, 192)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { 
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Quantity'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top'
+                },
+                title: {
+                    display: true,
+                    text: 'Production Progress by Product'
+                }
+            }
+        }
+    });
+    
+    // Daily Production Chart
+    const dailyProductionCtx = document.getElementById('dailyProductionChart').getContext('2d');
+    new Chart(dailyProductionCtx, {
+        type: 'line',
+        data: {
+            labels: Array.from({length: 9}, (_, i) => {
+                const hour = 8 + i;
+                return `${hour.toString().padStart(2, '0')}:00`;
+            }),
+            datasets: [{
+                label: 'Parts Produced',
+                data: Array(9).fill(0),  // Will be updated via Socket.IO
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Parts Count'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Time'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top'
+                },
+                title: {
+                    display: true,
+                    text: 'Daily Production Trend'
+                }
+            }
+        }
+    });
+    
+    // Timeline Chart
+    const timelineCtx = document.getElementById('timelineChart').getContext('2d');
+    window.timelineChart = new Chart(timelineCtx, {
+        type: 'line',
+        data: {
+            labels: Array.from({length: 9}, (_, i) => {
+                const hour = 8 + i;
+                return `${hour.toString().padStart(2, '0')}:00`;
+            }),
+            datasets: [
+                {
+                    label: 'Planned',
+                    data: Array(9).fill(0),  // Will be updated via Socket.IO
+                    borderColor: 'rgb(54, 162, 235)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                },
+                {
+                    label: 'Actual',
+                    data: Array(9).fill(0),  // Will be updated via Socket.IO
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Parts Count'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Time'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top'
+                },
+                title: {
+                    display: true,
+                    text: 'Production Timeline (Planned vs Actual)'
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            },
+            interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
+            }
+        }
+    });
+});
+
+// Socket.IO connection and event handling
+const socket = io();
+
+socket.on('connect', () => {
+    console.log('Connected to server');
+});
+
+socket.on('disconnect', () => {
+    console.log('Disconnected from server');
+});
+
+socket.on('production_update', (data) => {
+    if (data.timeline_data) {
+        window.timelineChart.data.datasets[0].data = data.timeline_data.planned;
+        window.timelineChart.data.datasets[1].data = data.timeline_data.actual;
+        window.timelineChart.update();
+    }
+});
+
+socket.on('dpr_update', (data) => {
+    if (data.data) {
+        // Update production progress chart
+        const productionProgressChart = Chart.getChart('productionProgressChart');
+        if (productionProgressChart) {
+            productionProgressChart.data.labels = data.data.map(d => d.name);
+            productionProgressChart.data.datasets[0].data = data.data.map(d => d.planned);
+            productionProgressChart.data.datasets[1].data = data.data.map(d => d.completed);
+            productionProgressChart.update();
+        }
+    }
+});
+
+// Search functionality
+function searchDrawing() {
+    const sapId = document.getElementById('sapIdSearch').value;
+    if (!sapId) return;
+
+    fetch(`/api/search_drawing/${sapId}`)
+        .then(response => response.json())
+        .then(data => {
+            const resultsDiv = document.getElementById('searchResults');
+            const detailsDiv = document.getElementById('drawingDetails');
+            
+            if (data.exists) {
+                detailsDiv.innerHTML = `
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <tr><th>Drawing Number</th><td>${data.drawing_number}</td></tr>
+                            <tr><th>SAP ID</th><td>${data.sap_id}</td></tr>
+                            <tr><th>Project</th><td>${data.project_name}</td></tr>
+                            <tr><th>End Product</th><td>${data.end_product}</td></tr>
+                            <tr><th>Planned Quantity</th><td>${data.planned_quantity}</td></tr>
+                            <tr><th>Completed Quantity</th><td>${data.completed_quantity}</td></tr>
+                            <tr><th>Rejected Quantity</th><td>${data.rejected_quantity}</td></tr>
+                            <tr><th>Rework Quantity</th><td>${data.rework_quantity}</td></tr>
+                            <tr><th>Completion</th><td>${data.completion_percentage}%</td></tr>
+                            <tr><th>Status</th><td>${data.status}</td></tr>
+                        </table>
+                    </div>
+                    ${data.last_operation ? `
+                        <h6 class="mt-3">Last Operation</h6>
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <tr><th>Operator</th><td>${data.last_operation.operator}</td></tr>
+                                <tr><th>Machine</th><td>${data.last_operation.machine}</td></tr>
+                                <tr><th>Status</th><td>${data.last_operation.status}</td></tr>
+                                <tr><th>Timestamp</th><td>${data.last_operation.timestamp}</td></tr>
+                            </table>
+                        </div>
+                    ` : ''}
+                `;
+            } else {
+                detailsDiv.innerHTML = '<div class="alert alert-warning">No drawing found with this SAP ID.</div>';
+            }
+            resultsDiv.style.display = 'block';
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error searching for drawing');
+        });
+}
+</script>
+{% endblock %}

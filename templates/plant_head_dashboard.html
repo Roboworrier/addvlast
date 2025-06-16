@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <!-- Summary Cards Row -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Overall OEE</h6>
+                    <h2 class="mb-0">{{ average_oee }}%</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Machine Utilization</h6>
+                    <h2 class="mb-0">{{ machine_utilization }}%</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <h6 class="card-title">Today's Production</h6>
+                    <h2 class="mb-0">{{ todays_production_count }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h6 class="card-title">Active Machines</h6>
+                    <h2 class="mb-0">{{ active_machines_count }}/{{ total_machines_count }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- First Row of Graphs -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>OEE Trends</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="oeeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="fas fa-industry me-2"></i>Machine Status</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="machineStatusChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Second Row of Graphs -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Quality Metrics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="qualityChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Downtime Analysis</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="downtimeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Critical Issues</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        {% for issue in critical_issues %}
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">{{ issue.title }}</h6>
+                                <small>{{ issue.time }}</small>
+                            </div>
+                            <p class="mb-1">{{ issue.description }}</p>
+                        </div>
+                        {% else %}
+                        <div class="text-center text-muted">No critical issues</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Production Summary Table -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-table me-2"></i>Production Summary</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>SAP ID</th>
+                            <th>Planned Qty</th>
+                            <th>Completed Qty</th>
+                            <th>Rejected Qty</th>
+                            <th>Rework Qty</th>
+                            <th>Completion %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in production_summary %}
+                        <tr>
+                            <td>{{ item.Product }}</td>
+                            <td>{{ item['SAP ID'] }}</td>
+                            <td>{{ item['Planned Qty'] }}</td>
+                            <td>{{ item['Completed Qty'] }}</td>
+                            <td>{{ item['Rejected Qty'] }}</td>
+                            <td>{{ item['Rework Qty'] }}</td>
+                            <td>
+                                <div class="progress">
+                                    <div class="progress-bar {% if item['Completion %'] >= 90 %}bg-success{% elif item['Completion %'] >= 60 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                         role="progressbar" 
+                                         style="width: {{ item['Completion %'] }}%"
+                                         aria-valuenow="{{ item['Completion %'] }}" 
+                                         aria-valuemin="0" 
+                                         aria-valuemax="100">
+                                        {{ item['Completion %'] }}%
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+<script>
+    var socket = io();
+    
+    // Initialize OEE Chart
+    var oeeChart = new Chart(document.getElementById('oeeChart').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: {{ timeline_dates | tojson }},
+            datasets: [{
+                label: 'Overall OEE',
+                data: {{ oee_trend | tojson }},
+                borderColor: 'rgb(54, 162, 235)',
+                tension: 0.1,
+                fill: true,
+                backgroundColor: 'rgba(54, 162, 235, 0.1)'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'OEE %'
+                    }
+                }
+            }
+        }
+    });
+
+    // Initialize Machine Status Chart
+    var machineStatusChart = new Chart(document.getElementById('machineStatusChart').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: {{ machine_names | tojson }},
+            datasets: [{
+                label: 'Running',
+                data: {{ machine_running | tojson }},
+                backgroundColor: 'rgba(75, 192, 192, 0.5)'
+            }, {
+                label: 'Setup',
+                data: {{ machine_setup | tojson }},
+                backgroundColor: 'rgba(255, 206, 86, 0.5)'
+            }, {
+                label: 'Stopped',
+                data: {{ machine_stopped | tojson }},
+                backgroundColor: 'rgba(255, 99, 132, 0.5)'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    stacked: true
+                },
+                x: {
+                    stacked: true
+                }
+            }
+        }
+    });
+
+    // Initialize Quality Chart
+    var qualityChart = new Chart(document.getElementById('qualityChart').getContext('2d'), {
+        type: 'doughnut',
+        data: {
+            labels: ['Good Parts', 'Rejected', 'Rework'],
+            datasets: [{
+                data: [
+                    {{ quality_metrics.good_parts }},
+                    {{ quality_metrics.rejected }},
+                    {{ quality_metrics.rework }}
+                ],
+                backgroundColor: [
+                    'rgba(75, 192, 192, 0.5)',
+                    'rgba(255, 99, 132, 0.5)',
+                    'rgba(255, 206, 86, 0.5)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+
+    // Initialize Downtime Chart
+    var downtimeChart = new Chart(document.getElementById('downtimeChart').getContext('2d'), {
+        type: 'pie',
+        data: {
+            labels: ['Planned', 'Unplanned', 'Setup', 'Maintenance'],
+            datasets: [{
+                data: [
+                    {{ downtime.planned }},
+                    {{ downtime.unplanned }},
+                    {{ downtime.setup }},
+                    {{ downtime.maintenance }}
+                ],
+                backgroundColor: [
+                    'rgba(54, 162, 235, 0.5)',
+                    'rgba(255, 99, 132, 0.5)',
+                    'rgba(255, 206, 86, 0.5)',
+                    'rgba(75, 192, 192, 0.5)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+
+    // Socket.IO event handlers for real-time updates
+    socket.on('oee_update', function(data) {
+        document.getElementById('overall-oee').textContent = data.average_oee + '%';
+        oeeChart.data.labels = data.timeline_dates;
+        oeeChart.data.datasets[0].data = data.oee_trend;
+        oeeChart.update();
+    });
+
+    socket.on('machine_update', function(data) {
+        document.getElementById('machine-utilization').textContent = data.utilization + '%';
+        document.getElementById('active-machines').textContent = 
+            data.active_count + '/' + data.total_count;
+
+        machineStatusChart.data.labels = data.machine_names;
+        machineStatusChart.data.datasets[0].data = data.running;
+        machineStatusChart.data.datasets[1].data = data.setup;
+        machineStatusChart.data.datasets[2].data = data.stopped;
+        machineStatusChart.update();
+    });
+
+    socket.on('quality_update', function(data) {
+        qualityChart.data.datasets[0].data = [
+            data.good_parts,
+            data.rejected,
+            data.rework
+        ];
+        qualityChart.update();
+    });
+
+    socket.on('downtime_update', function(data) {
+        downtimeChart.data.datasets[0].data = [
+            data.planned,
+            data.unplanned,
+            data.setup,
+            data.maintenance
+        ];
+        downtimeChart.update();
+    });
+</script>
+{% endblock %} 

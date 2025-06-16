@@ -1,0 +1,417 @@
+{% extends "base.html" %}
+
+{% block title %}Digital Twin Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="border-bottom pb-2">
+                <i class="fas fa-industry me-2"></i>Digital Twin Dashboard
+                <small class="text-muted fs-6">Real-time Machine Monitoring</small>
+            </h2>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white h-100">
+                <div class="card-body">
+                    <h6 class="text-uppercase mb-2">Overall OEE</h6>
+                    <h3 class="mb-0" id="overall-oee">{{ "%.1f"|format(overall_oee|default(0)) }}%</h3>
+                    <small class="text-white-50">Plant-wide Efficiency</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white h-100">
+                <div class="card-body">
+                    <h6 class="text-uppercase mb-2">Active Machines</h6>
+                    <h3 class="mb-0" id="active-machines">{{ active_machines }}/{{ total_machines }}</h3>
+                    <small class="text-white-50">Currently Running</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white h-100">
+                <div class="card-body">
+                    <h6 class="text-uppercase mb-2">Today's Production</h6>
+                    <h3 class="mb-0" id="todays-production">{{ todays_production|default(0) }}</h3>
+                    <small class="text-white-50">Parts Completed Today</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark h-100">
+                <div class="card-body">
+                    <h6 class="text-uppercase mb-2">Quality Rate</h6>
+                    <h3 class="mb-0" id="quality-rate">{{ "%.1f"|format(quality_rate|default(0)) }}%</h3>
+                    <small class="text-dark-50">First Pass Yield</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Machine Grid -->
+    {% if machine_data %}
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
+        {% for machine in machine_data %}
+        {% set machine_id = machine.name|replace(' ', '_')|lower %}
+        {% set status = machine.status|default('offline')|lower %}
+        
+        {% if status == 'running' %}
+            {% set card_border_class = 'border-success' %}
+            {% set card_header_bg = 'bg-success text-white' %}
+            {% set status_badge_bg = 'bg-light text-dark' %}
+            {% set status_text = 'Running' %}
+        {% elif status == 'setup' %}
+            {% set card_border_class = 'border-warning' %}
+            {% set card_header_bg = 'bg-warning text-dark' %}
+            {% set status_badge_bg = 'bg-light text-dark' %}
+            {% set status_text = 'Setup' %}
+        {% elif status == 'breakdown' %}
+            {% set card_border_class = 'border-danger' %}
+            {% set card_header_bg = 'bg-danger text-white' %}
+            {% set status_badge_bg = 'bg-light text-dark' %}
+            {% set status_text = 'Breakdown' %}
+        {% else %}
+            {% set card_border_class = 'border-secondary' %}
+            {% set card_header_bg = 'bg-secondary text-white' %}
+            {% set status_badge_bg = 'bg-light text-dark' %}
+            {% set status_text = 'Offline' %}
+        {% endif %}
+        
+        <div class="col">
+            <div class="card h-100 shadow-sm machine-tile {{ card_border_class }}">
+                <div class="card-header d-flex justify-content-between align-items-center {{ card_header_bg }}" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#collapse-{{ machine_id }}" aria-expanded="false" aria-controls="collapse-{{ machine_id }}">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-server me-2"></i>{{ machine.name }}
+                    </h5>
+                    <span class="badge rounded-pill {{ status_badge_bg }}">{{ status_text }}</span>
+                </div>
+                
+                <div class="collapse show" id="collapse-{{ machine_id }}">
+                    <div class="card-body">
+                        <!-- OEE Section -->
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">Overall Equipment Effectiveness (OEE)</h6>
+                            <div class="progress-stacked mb-2">
+                                <div class="progress" role="progressbar" aria-valuenow="{{ machine.oee.availability }}" aria-valuemin="0" aria-valuemax="100" style="width: {{ machine.oee.availability }}%">
+                                    <div class="progress-bar bg-info">A: {{ machine.oee.availability|round(1) }}%</div>
+                                </div>
+                                <div class="progress" role="progressbar" aria-valuenow="{{ machine.oee.performance }}" aria-valuemin="0" aria-valuemax="100" style="width: {{ machine.oee.performance }}%">
+                                    <div class="progress-bar bg-success">P: {{ machine.oee.performance|round(1) }}%</div>
+                                </div>
+                                <div class="progress" role="progressbar" aria-valuenow="{{ machine.oee.quality }}" aria-valuemin="0" aria-valuemax="100" style="width: {{ machine.oee.quality }}%">
+                                    <div class="progress-bar bg-warning">Q: {{ machine.oee.quality|round(1) }}%</div>
+                                </div>
+                            </div>
+                            <div class="text-center">
+                                <span class="badge bg-primary">Overall OEE: {{ machine.oee.overall|round(1) }}%</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Current Operation Section -->
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">Current Operation</h6>
+                            <div class="row">
+                                <div class="col-6">
+                                    <small class="text-muted">Operator:</small><br>
+                                    <strong>
+                                        {% if machine.current_operator %}
+                                            {{ machine.current_operator.name }}
+                                            {% if machine.current_operator.shift %}
+                                                <span class="badge bg-info">{{ machine.current_operator.shift }}</span>
+                                            {% endif %}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </strong>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">Status Duration:</small><br>
+                                    <strong>
+                                        {% if machine.current_session and machine.current_session.start_time %}
+                                            {{ ((now - machine.current_session.start_time).total_seconds() / 3600)|round(1) }} hours
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Job Details Section -->
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">Job Details</h6>
+                            <div class="row g-2">
+                                <div class="col-12">
+                                    <small class="text-muted">Drawing:</small><br>
+                                    <strong>
+                                        {% if machine.current_job and machine.current_job.drawing_number %}
+                                            {{ machine.current_job.drawing_number }}
+                                            {% if machine.current_job.sap_id %}
+                                                <span class="badge bg-secondary">SAP: {{ machine.current_job.sap_id }}</span>
+                                            {% endif %}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </strong>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">Parts Completed:</small><br>
+                                    <strong>
+                                        {% if machine.current_session %}
+                                            {{ machine.current_session.parts_completed }}
+                                        {% else %}
+                                            0
+                                        {% endif %}
+                                    </strong>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">Product:</small><br>
+                                    <strong>
+                                        {% if machine.current_job and machine.current_job.product_name %}
+                                            {{ machine.current_job.product_name }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Performance Metrics Section -->
+                        <div class="mb-3">
+                            <h6 class="border-bottom pb-2">Performance Metrics</h6>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <div class="metric-card bg-light p-2 rounded">
+                                        <small class="text-muted d-block">Setup Time</small>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="badge bg-primary">Actual</span>
+                                            <strong>{{ machine.actual_setup_time_display if machine.actual_setup_time_display else 'N/A' }}</strong>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="badge bg-secondary">Standard</span>
+                                            <strong>{{ "%.1f min"|format(machine.std_setup_time) if machine.std_setup_time else 'N/A' }}</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="metric-card bg-light p-2 rounded">
+                                        <small class="text-muted d-block">Cycle Time</small>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="badge bg-primary">Actual</span>
+                                            <strong>{{ machine.avg_actual_cycle_time_display if machine.avg_actual_cycle_time_display else 'N/A' }}</strong>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="badge bg-secondary">Standard</span>
+                                            <strong>{{ "%.2f min/pc"|format(machine.std_cycle_time) if machine.std_cycle_time else 'N/A' }}</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Last Updated -->
+                        <div class="text-end mt-2">
+                            <small class="text-muted">
+                                Last updated: 
+                                {% if machine.last_updated %}
+                                    {{ machine.last_updated.strftime('%Y-%m-%d %H:%M:%S') }}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.machine-tile {
+    transition: transform 0.2s;
+}
+
+.machine-tile:hover {
+    transform: translateY(-5px);
+}
+
+.machine-tile .card-header {
+    transition: background-color 0.3s ease;
+}
+
+.progress-stacked {
+    height: 20px;
+    border-radius: 0.25rem;
+    overflow: hidden;
+}
+
+.progress-stacked .progress {
+    height: 100%;
+    border-radius: 0;
+}
+
+.progress-stacked .progress-bar {
+    font-size: 0.75rem;
+    line-height: 20px;
+    font-weight: bold;
+}
+
+.progress {
+    display: flex;
+    overflow: hidden;
+}
+
+.progress[data-width] {
+    width: attr(data-width);
+}
+
+.metric-card {
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    transition: background-color 0.3s ease;
+}
+
+.metric-card:hover {
+    background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+.badge {
+    font-weight: 500;
+}
+
+.border-bottom {
+    border-bottom: 2px solid rgba(0, 0, 0, 0.1) !important;
+    margin-bottom: 1rem;
+}
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+<script>
+    var socket = io();
+    var lastUpdate = new Date();
+    
+    // Update timestamps every minute
+    setInterval(function() {
+        document.querySelectorAll('.machine-tile').forEach(function(tile) {
+            var lastUpdatedEl = tile.querySelector('small.text-muted');
+            if (lastUpdatedEl) {
+                var now = new Date();
+                var timeDiff = Math.round((now - lastUpdate) / 1000 / 60);
+                if (timeDiff > 0) {
+                    lastUpdatedEl.textContent = `Last updated: ${timeDiff} min ago`;
+                }
+            }
+        });
+    }, 60000);
+
+    // Socket.IO event handlers
+    socket.on('connect', function() {
+        console.log('Connected to server');
+    });
+
+    socket.on('disconnect', function() {
+        console.log('Disconnected from server');
+    });
+
+    socket.on('machine_update', function(data) {
+        console.log('Received machine update:', data);
+        lastUpdate = new Date();
+        
+        // Update summary cards
+        document.getElementById('overall-oee').textContent = data.overall_oee.toFixed(1) + '%';
+        document.getElementById('active-machines').textContent = data.active_machines + '/' + data.total_machines;
+        document.getElementById('todays-production').textContent = data.todays_production;
+        document.getElementById('quality-rate').textContent = data.quality_rate.toFixed(1) + '%';
+        
+        // Update machine tiles
+        data.machines.forEach(function(machine) {
+            var machineId = machine.name.toLowerCase().replace(/ /g, '_');
+            var tile = document.querySelector(`#collapse-${machineId}`);
+            if (tile) {
+                // Update OEE
+                var oeeSection = tile.querySelector('.progress-stacked');
+                if (oeeSection) {
+                    oeeSection.innerHTML = `
+                        <div class="progress" role="progressbar" aria-valuenow="${machine.oee.availability}" aria-valuemin="0" aria-valuemax="100" style="width: ${machine.oee.availability}%">
+                            <div class="progress-bar bg-info">A: ${machine.oee.availability.toFixed(1)}%</div>
+                        </div>
+                        <div class="progress" role="progressbar" aria-valuenow="${machine.oee.performance}" aria-valuemin="0" aria-valuemax="100" style="width: ${machine.oee.performance}%">
+                            <div class="progress-bar bg-success">P: ${machine.oee.performance.toFixed(1)}%</div>
+                        </div>
+                        <div class="progress" role="progressbar" aria-valuenow="${machine.oee.quality}" aria-valuemin="0" aria-valuemax="100" style="width: ${machine.oee.quality}%">
+                            <div class="progress-bar bg-warning">Q: ${machine.oee.quality.toFixed(1)}%</div>
+                        </div>
+                    `;
+                }
+                
+                // Update overall OEE badge
+                var oeeBadge = tile.querySelector('.badge.bg-primary');
+                if (oeeBadge) {
+                    oeeBadge.textContent = `Overall OEE: ${machine.oee.overall.toFixed(1)}%`;
+                }
+                
+                // Update status
+                var statusBadge = tile.parentElement.querySelector('.badge.rounded-pill');
+                if (statusBadge) {
+                    var status = machine.status.toLowerCase();
+                    var statusText = status.charAt(0).toUpperCase() + status.slice(1);
+                    statusBadge.textContent = statusText;
+                    
+                    // Update card styling based on status
+                    var card = tile.closest('.card');
+                    if (card) {
+                        card.className = card.className.replace(/border-\w+/, '');
+                        card.classList.add(status === 'running' ? 'border-success' :
+                                         status === 'setup' ? 'border-warning' :
+                                         status === 'breakdown' ? 'border-danger' :
+                                         'border-secondary');
+                        
+                        var header = card.querySelector('.card-header');
+                        if (header) {
+                            header.className = header.className.replace(/bg-\w+/, '');
+                            header.classList.add(status === 'running' ? 'bg-success' :
+                                               status === 'setup' ? 'bg-warning' :
+                                               status === 'breakdown' ? 'bg-danger' :
+                                               'bg-secondary');
+                        }
+                    }
+                }
+                
+                // Update metrics
+                if (machine.current_session) {
+                    var partsCompleted = tile.querySelector('.col-6 strong');
+                    if (partsCompleted) {
+                        partsCompleted.textContent = machine.current_session.parts_completed;
+                    }
+                }
+                
+                // Update last updated timestamp
+                var lastUpdatedEl = tile.querySelector('small.text-muted');
+                if (lastUpdatedEl) {
+                    lastUpdatedEl.textContent = 'Last updated: just now';
+                }
+            }
+        });
+    });
+
+    // Request initial update
+    socket.emit('request_update');
+    
+    // Request updates periodically
+    setInterval(function() {
+        socket.emit('request_update');
+    }, 30000);
+</script>
+{% endblock %}

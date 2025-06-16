@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ChipSight{% endblock %}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <style>
+        :root {
+            --sidebar-width: 250px;
+            --sidebar-collapsed-width: 70px;
+            --topbar-height: 60px;
+            --primary-color: #0d6efd;
+            --secondary-color: #6c757d;
+        }
+
+        :root {
+            --primary-blue: #007bff;
+            --primary-red: #ff3333;
+            --light-blue: #e8f3ff;
+            --lighter-blue: #f5f9ff;
+            --light-red: #fff0f0;
+            --bg-white: #ffffff;
+            --bg-light: #f8fafb;
+            --text-dark: #2d3436;
+            --text-secondary: #636e72;
+            --border-color: #e9ecef;
+            --shadow-color: rgba(0, 0, 0, 0.05);
+        }
+
+        body {
+            overflow-x: hidden;
+            background-color: var(--bg-light);
+            position: relative;
+            margin: 0;
+            min-height: 100vh;
+            color: var(--text-dark);
+        }
+
+        #wrapper {
+            display: flex;
+            position: relative;
+            width: 100%;
+            min-height: 100vh;
+        }
+
+        .main-content {
+            background-color: var(--bg-white);
+            border-radius: 12px;
+            margin: 20px;
+            padding: 25px;
+            box-shadow: 0 2px 12px var(--shadow-color);
+        }
+
+        /* Card styling */
+        .card {
+            background-color: var(--bg-white);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 8px var(--shadow-color);
+            transition: transform 0.2s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+        }
+
+        .card-header {
+            background-color: var(--lighter-blue);
+            border-bottom: 1px solid var(--border-color);
+            color: var(--primary-blue);
+            font-weight: 600;
+        }
+
+        /* Button styling */
+        .btn-primary {
+            background-color: var(--primary-blue);
+            border-color: var(--primary-blue);
+            box-shadow: 0 2px 4px rgba(0, 123, 255, 0.15);
+        }
+
+        .btn-danger {
+            background-color: var(--primary-red);
+            border-color: var(--primary-red);
+            box-shadow: 0 2px 4px rgba(255, 51, 51, 0.15);
+        }
+
+        /* Table styling */
+        .table {
+            color: var(--text-dark);
+            background-color: var(--bg-white);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .table thead th {
+            background-color: var(--lighter-blue);
+            border-bottom: 2px solid var(--primary-blue);
+            color: var(--primary-blue);
+            font-weight: 600;
+        }
+
+        .table td {
+            border-top: 1px solid var(--border-color);
+            padding: 1rem;
+        }
+
+        .table tbody tr:hover {
+            background-color: var(--light-blue);
+        }
+
+        /* Form styling */
+        .form-control {
+            background-color: var(--bg-white);
+            border: 1px solid var(--border-color);
+            color: var(--text-dark);
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+        }
+
+        .form-control:focus {
+            background-color: var(--bg-white);
+            border-color: var(--primary-blue);
+            color: var(--text-dark);
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+        }
+
+        /* Section headings */
+        .section-title {
+            color: var(--text-dark);
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--light-blue);
+        }
+
+        #sidebar-wrapper {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: var(--sidebar-width);
+            background-color: #343a40;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            transition: transform 0.25s ease-out;
+            z-index: 1040;
+        }
+
+        #sidebar-wrapper .sidebar-heading {
+            padding: 1.2rem 1rem;
+            font-size: 1.2rem;
+            color: white;
+            background-color: var(--primary-color);
+        }
+
+        #sidebar-wrapper .list-group {
+            width: var(--sidebar-width);
+        }
+
+        #sidebar-wrapper .list-group-item {
+            border: none;
+            padding: 1rem 1.5rem;
+            background-color: transparent;
+            color: #fff;
+            display: flex;
+            align-items: center;
+        }
+
+        #sidebar-wrapper .list-group-item:hover {
+            background-color: rgba(255,255,255,0.1);
+        }
+
+        #sidebar-wrapper .list-group-item.active {
+            background-color: var(--primary-color);
+        }
+
+        #sidebar-wrapper .list-group-item i {
+            margin-right: 1rem;
+            width: 20px;
+            text-align: center;
+        }
+
+        #wrapper.toggled #sidebar-wrapper {
+            transform: translateX(calc(-1 * var(--sidebar-width)));
+        }
+
+        #page-content-wrapper {
+            width: 100%;
+            margin-left: var(--sidebar-width);
+            transition: margin-left 0.25s ease-out;
+        }
+
+        #wrapper.toggled #page-content-wrapper {
+            margin-left: 0;
+        }
+
+        .navbar {
+            position: fixed;
+            top: 0;
+            right: 0;
+            left: var(--sidebar-width);
+            height: var(--topbar-height);
+            background-color: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: left 0.25s ease-out;
+            z-index: 1030;
+            display: flex;
+            align-items: center;
+        }
+
+        /* Styles for persistent navbar logos */
+        .navbar-persistent-logos {
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+            height: 40px;
+            margin-left: auto;
+            margin-right: 1rem;
+            transition: all 0.25s ease-out;
+        }
+
+        .navbar-persistent-logos .logo {
+            max-height: 35px;
+            width: auto;
+        }
+
+        .navbar-persistent-logos .logo-divider {
+            height: 30px;
+            margin: 0 0.5rem;
+            background-color: rgba(0, 0, 0, 0.2);
+        }
+
+        #wrapper.toggled .navbar-persistent-logos {
+            display: flex;
+        }
+
+        #wrapper.toggled .navbar {
+            left: 0;
+        }
+
+        @media (max-width: 768px) {
+            .navbar-persistent-logos {
+                display: flex;
+            }
+        }
+
+        #menu-toggle {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: var(--secondary-color);
+            padding: 0.5rem;
+            cursor: pointer;
+            margin-right: auto;
+        }
+
+        #menu-toggle:hover {
+            color: var(--primary-color);
+        }
+
+        .main-content {
+            padding: 20px;
+            margin-top: var(--topbar-height);
+            transition: margin-left 0.25s ease-out;
+        }
+
+        .flash-messages {
+            position: fixed;
+            top: calc(var(--topbar-height) + 20px);
+            right: 20px;
+            z-index: 1050;
+        }
+
+        /* Mobile Responsiveness */
+        @media (max-width: 768px) {
+            #sidebar-wrapper {
+                transform: translateX(calc(-1 * var(--sidebar-width)));
+            }
+
+            #wrapper.toggled #sidebar-wrapper {
+                transform: translateX(0);
+            }
+
+            #page-content-wrapper {
+                margin-left: 0;
+                width: 100%;
+            }
+
+            .navbar {
+                left: 0;
+            }
+
+            .main-content {
+                transition: transform 0.25s ease-out;
+            }
+        }
+
+        /* Prevent scrollbar jump */
+        html {
+            scrollbar-width: thin;
+            scrollbar-color: var(--secondary-color) transparent;
+        }
+
+        /* Custom scrollbar for webkit browsers */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background-color: var(--secondary-color);
+            border-radius: 4px;
+        }
+
+        .logo-container {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem;
+            background-color: #343a40;
+            width: 100%;
+            max-width: var(--sidebar-width);
+            margin: 0 auto;
+            box-sizing: border-box;
+        }
+
+        /* Ensure sidebar can accommodate the logo container */
+        #sidebar-wrapper .sidebar-heading {
+            min-height: 60px;
+            padding: 0 !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #343a40 !important;
+            width: 100%;
+        }
+
+        .logo-divider {
+            width: 1px;
+            height: 35px;
+            background-color: rgba(255, 255, 255, 0.2);
+            margin: 0 0.5rem;
+            flex-shrink: 0;
+        }
+
+        .chipsight-logo, .addverb-logo {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            flex: 0 1 auto;
+            max-width: 45%;
+        }
+
+        .logo-main {
+            font-size: 16px;
+            font-weight: bold;
+            line-height: 1;
+            text-align: center;
+            white-space: nowrap;
+            letter-spacing: -0.2px;
+        }
+
+        .logo-tagline {
+            font-size: 8px;
+            margin-top: 2px;
+            text-align: center;
+            white-space: nowrap;
+            letter-spacing: 0;
+            width: 100%;
+        }
+
+        .chipsight-logo .logo-main {
+            color: white;
+        }
+
+        .chipsight-logo .logo-main span {
+            color: #007bff;
+        }
+
+        .chipsight-logo .logo-tagline {
+            color: white;
+        }
+
+        .addverb-logo .logo-main {
+            color: #ff3333;
+        }
+
+        .addverb-logo .logo-tagline {
+            color: #007bff;
+        }
+
+        /* Ensure logos are properly sized in sidebar */
+        .sidebar-heading .logo-container .logo {
+            height: 35px;
+            width: auto;
+            object-fit: contain;
+            max-width: 100%;
+        }
+
+        /* Adjust sidebar heading to accommodate logos */
+        .sidebar-heading {
+            padding: 0 !important;
+            background-color: #343a40 !important;
+            overflow: visible !important;
+            width: 100%;
+        }
+
+        /* Ensure sidebar wrapper can accommodate logos */
+        #sidebar-wrapper {
+            overflow: visible;
+            min-width: var(--sidebar-width);
+        }
+
+        .sidebar-heading {
+            padding: 0 !important;
+            background-color: #343a40 !important;
+            overflow: hidden;
+        }
+
+        /* Add if not present, or adjust */
+        .logout-button {
+            width: 100%;
+            text-align: left;
+            border: none;
+            background-color: transparent; /* Match list-group-item */
+            color: #fff; /* Match list-group-item text */
+            padding: 1rem 1.5rem; /* Match list-group-item padding */
+        }
+        .logout-button:hover {
+            background-color: rgba(255,255,255,0.1); /* Match list-group-item hover */
+        }
+        .logout-button i {
+            margin-right: 1rem;
+            width: 20px;
+            text-align: center;
+        }
+
+        /* Copyright notice styling */
+        .copyright-notice {
+            position: fixed;
+            bottom: 5px;
+            right: 10px;
+            font-size: 0.7rem;
+            color: #999;
+            opacity: 0.7;
+            z-index: 1000;
+            pointer-events: none;
+            user-select: none;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Make copyright notice more subtle on smaller screens */
+        @media (max-width: 768px) {
+            .copyright-notice {
+                font-size: 0.6rem;
+                opacity: 0.5;
+            }
+        }
+
+        .plant-head-nav {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        
+        .plant-head-nav .btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+        
+        .plant-head-nav .btn:hover {
+            transform: scale(1.1);
+        }
+        
+        .plant-head-nav .btn i {
+            font-size: 1.5rem;
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div id="wrapper">
+        <!-- Add the copyright notice -->
+        <div class="copyright-notice">© 2025 Diwakar Singh</div>
+        
+        <!-- Sidebar -->
+        <div id="sidebar-wrapper">
+            <div class="sidebar-heading">
+                <div class="logo-container">
+                    <div class="chipsight-logo">
+                        <div class="logo-main">Chip<span>Sight</span></div>
+                        <div class="logo-tagline">We See every Cut.</div>
+                    </div>
+                    <div class="logo-divider"></div>
+                    <div class="addverb-logo">
+                        <div class="logo-main">ADDVERB</div>
+                        <div class="logo-tagline">Human | Robot | Possibilities</div>
+                    </div>
+                </div>
+            </div>
+            <div class="list-group list-group-flush">
+                {% if session.get('active_role') == 'planner' %}
+    <a href="{{ url_for('planner_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+    <a href="{{ url_for('machine_shop') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-industry me-2"></i>Machine Shop
+    </a>
+    <a href="{{ url_for('live_dpr') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-chart-line me-2"></i>Live DPR
+    </a>
+{% elif session.get('active_role') == 'manager' %}
+    <a href="{{ url_for('manager_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+    <a href="{{ url_for('machine_shop') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-industry me-2"></i>Machine Shop
+    </a>
+    <a href="{{ url_for('live_dpr') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-chart-line me-2"></i>Live DPR
+    </a>
+{% elif session.get('active_role') == 'quality' %}
+    <a href="{{ url_for('quality_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+{% elif session.get('active_role') == 'operator' %}
+    {% if session.get('machine_name') == 'Leadwell-1' %}
+    <a href="{{ url_for('operator_panel_leadwell1') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+    {% elif session.get('machine_name') == 'Leadwell-2' %}
+    <a href="{{ url_for('operator_panel_leadwell2') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+    {% endif %}
+{% elif session.get('active_role') == 'plant_head' %}
+    <a href="{{ url_for('plant_head_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+    <a href="{{ url_for('machine_shop') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-industry me-2"></i>Machine Shop
+    </a>
+    <a href="{{ url_for('live_dpr') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-chart-line me-2"></i>Live DPR
+    </a>
+{% elif session.get('active_role') == 'admin' %}
+    <a href="{{ url_for('admin_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+{% endif %}
+
+                <form action="{{ url_for('login_general') }}" method="POST" style="display: contents;">
+                    <button type="submit" class="list-group-item list-group-item-action bg-dark text-white logout-button">
+                        <i class="fas fa-sign-out-alt"></i>Logout {{ session.username }}
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Page Content -->
+        <div id="page-content-wrapper">
+            <!-- Top Navigation -->
+            <nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom fixed-top" style="height: var(--topbar-height); left: var(--sidebar-width); right:0; transition: left 0.25s ease-out; z-index: 1030;" id="top-navbar">
+                <div class="container-fluid">
+                    <button class="btn" id="menu-toggle">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <!-- Add persistent logos that show when sidebar is collapsed -->
+                    <div class="navbar-persistent-logos">
+                        <div class="chipsight-logo">
+                            <img src="{{ url_for('static', filename='images/chipsight-logo.svg') }}" alt="ChipSight" class="logo">
+                        </div>
+                        <div class="logo-divider"></div>
+                        <div class="addverb-logo">
+                            <img src="{{ url_for('static', filename='images/addverb-logo.svg') }}" alt="Addverb" class="logo">
+                        </div>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Main Content -->
+            <div class="main-content">
+                <!-- Flash Messages -->
+                <div class="flash-messages" style="position: fixed; top: calc(var(--topbar-height) + 20px); right: 20px; z-index: 1050; min-width: 300px;">
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+                </div>
+
+                <!-- Page Content -->
+                <div class="container-fluid" style="padding-top: var(--topbar-height);">
+                    {% block content %}{% endblock %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Custom Scripts -->
+    <script>
+        // Toggle sidebar
+        document.getElementById("menu-toggle").addEventListener("click", function(e) {
+            e.preventDefault();
+            document.getElementById("wrapper").classList.toggle("toggled");
+        });
+
+        // Auto-hide flash messages after 5 seconds
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                const alerts = document.querySelectorAll('.alert');
+                alerts.forEach(function(alert) {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                });
+            }, 5000);
+        });
+    </script>
+
+    <!-- Additional Scripts -->
+    {% block scripts %}{% endblock %}
+
+    <!-- Plant Head Navigation Button (always show if user is plant head) -->
+    {% if session.get('active_role') == 'plant_head' %}
+    <div class="plant-head-nav">
+        <a href="{{ url_for('plant_head_dashboard') }}" class="btn btn-primary" title="Go to Plant Head Dashboard">
+            <i class="fas fa-industry"></i>
+        </a>
+    </div>
+    {% endif %}
+</body>
+</html> 

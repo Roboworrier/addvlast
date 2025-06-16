@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Machine Report - ChipSight{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Machine Report</h1>
+        <div class="d-flex gap-2">
+            <!-- Date Range Filter -->
+            <form class="d-flex gap-2" method="GET">
+                <div class="input-group">
+                    <span class="input-group-text">From</span>
+                    <input type="date" class="form-control" name="start_date" value="{{ start_date }}" required>
+                </div>
+                <div class="input-group">
+                    <span class="input-group-text">To</span>
+                    <input type="date" class="form-control" name="end_date" value="{{ end_date }}" required>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-filter"></i> Filter
+                </button>
+            </form>
+            
+            <!-- Export Button -->
+            <a href="{{ url_for('machine_report', format='excel', start_date=start_date, end_date=end_date) }}" class="btn btn-success">
+                <i class="fas fa-file-excel"></i> Export to Excel
+            </a>
+            
+            <!-- Back Button -->
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        {% for machine in report_data %}
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h3>{{ machine.name }}</h3>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h4>Status</h4>
+                            <p>Machine Status: <span class="badge bg-{{ 'success' if machine.status == 'available' else 'warning' if machine.status == 'in_use' else 'danger' }}">{{ machine.status }}</span></p>
+                            <p>Current Operator: {{ machine.operator }}</p>
+                            <p>Current Drawing: {{ machine.current_drawing }}</p>
+                            <p>SAP ID: {{ machine.current_sap_id }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h4>Production</h4>
+                            <p>Planned Quantity: {{ machine.planned_qty }}</p>
+                            <p>Completed: {{ machine.completed_qty }}</p>
+                            <p>Rejected: {{ machine.rejected_qty }}</p>
+                            <p>Rework: {{ machine.rework_qty }}</p>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <h4>OEE Components</h4>
+                            <p>Availability: {{ machine.oee.availability }}%</p>
+                            <p>Performance: {{ machine.oee.performance }}%</p>
+                            <p>Quality: {{ machine.oee.quality }}%</p>
+                            <p>Overall OEE: {{ machine.oee.overall }}%</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h4>Times</h4>
+                            <p>Setup Time: {{ machine.actual_setup_time }}</p>
+                            <p>Average Cycle Time: {{ machine.avg_cycle_time }}</p>
+                        </div>
+                    </div>
+                    {% if machine.breakdown_time %}
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div class="alert alert-danger">
+                                <h4>Machine Breakdown</h4>
+                                <p>Start Time: {{ machine.breakdown_time }}</p>
+                                <p>Reason: {{ machine.breakdown_reason }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    $('#reportTable').DataTable({
+        order: [[0, 'desc']],  // Sort by date descending
+        pageLength: 25,
+        dom: 'Bfrtip',
+        buttons: [
+            'copy', 'csv', 'print'
+        ]
+    });
+});
+</script>
+{% endblock %} 

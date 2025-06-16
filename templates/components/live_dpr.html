@@ -1,0 +1,108 @@
+<!-- Live DPR Component -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5>Daily Production Report</h5>
+        <button class="btn btn-success" onclick="exportDPR()">
+            <i class="fas fa-download"></i> Export to Excel
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered" id="dpr-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Proj</th>
+                        <th>SAP No</th>
+                        <th>Drg No</th>
+                        <th>Part Cost</th>
+                        <th>M/C D/O</th>
+                        <th>Tool Cost</th>
+                        <th>Setup</th>
+                        <th>PMGAG</th>
+                        <th>Power</th>
+                        <th>Stoppage</th>
+                        <th>Status</th>
+                        <th>Target</th>
+                        <th>Actual</th>
+                        <th>Rejected</th>
+                        <th>Rework</th>
+                        <th>Standard ST (min)</th>
+                        <th>Actual ST (min)</th>
+                        <th>Standard CT (min)</th>
+                        <th>Actual CT (min)</th>
+                        <th>Total CT (min)</th>
+                        <th>Availability (%)</th>
+                        <th>Performance (%)</th>
+                        <th>Quality (%)</th>
+                        <th>OEE (%)</th>
+                    </tr>
+                </thead>
+                <tbody id="dpr-table-body">
+                    <!-- Will be populated by Socket.IO -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateDPRTable(data) {
+    var tbody = document.getElementById('dpr-table-body');
+    tbody.innerHTML = '';
+    
+    data.forEach(function(item) {
+        var row = `<tr>
+            <td>${item.date || ''}</td>
+            <td>${item.proj || ''}</td>
+            <td>${item.sap_no || ''}</td>
+            <td>${item.drg_no || ''}</td>
+            <td>${item.part_cost || ''}</td>
+            <td>${item.mc_do || ''}</td>
+            <td>${item.tool_cost || ''}</td>
+            <td>${item.setup || ''}</td>
+            <td>${item.pmgag || ''}</td>
+            <td>${item.power || ''}</td>
+            <td>${item.stoppage || ''}</td>
+            <td>${item.status || ''}</td>
+            <td>${item.target || 0}</td>
+            <td>${item.actual || 0}</td>
+            <td>${item.rejected || 0}</td>
+            <td>${item.rework || 0}</td>
+            <td>${item.std_setup_time || 0}</td>
+            <td>${item.actual_setup_time || 0}</td>
+            <td>${item.std_cycle_time || 0}</td>
+            <td>${item.actual_cycle_time || 0}</td>
+            <td>${item.total_cycle_time || 0}</td>
+            <td>${item.availability || 0}</td>
+            <td>${item.performance || 0}</td>
+            <td>${item.quality || 0}</td>
+            <td>${item.oee || 0}</td>
+        </tr>`;
+        tbody.innerHTML += row;
+    });
+}
+
+function exportDPR() {
+    var table = document.getElementById('dpr-table');
+    var rows = Array.from(table.rows).map(row => {
+        return Array.from(row.cells).map(cell => cell.textContent);
+    });
+    
+    var csvContent = rows.map(row => row.join(',')).join('\n');
+    var blob = new Blob([csvContent], { type: 'text/csv' });
+    var url = window.URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'DPR_Report_' + new Date().toISOString().split('T')[0] + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+}
+
+// Listen for DPR updates
+socket.on('dpr_update', function(data) {
+    updateDPRTable(data.data);
+});
+</script> 

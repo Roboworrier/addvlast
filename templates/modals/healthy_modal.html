@@ -1,0 +1,13 @@
+<div class="modal fade" id="healthyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Mark Machine as Healthy</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('update_machine_status') }}" method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="machine_id" value="{{ machine.id }}">
+                    <input type="hidden" name="status" value="healthy">
+                    <input type="hidden" name="operator_name" value="{{ operator_name }}">
+                    <p>Are you sure the machine is now operational

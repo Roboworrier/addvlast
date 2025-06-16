@@ -1,0 +1,111 @@
+/* Force opacity on all elements */
+html, body, #qualityForm, .container-fluid, .card, .modal, .modal-content,
+.form-control, .form-select, .btn, .table, .progress, .progress-bar {
+    opacity: 1 !important;
+}
+
+/* Remove modal backdrop */
+.modal-backdrop,
+.modal-backdrop.show {
+    display: none !important;
+}
+
+/* Custom modal styling */
+.modal {
+    background: rgba(0, 0, 0, 0.5) !important;
+}
+
+.modal-dialog {
+    margin: 1.75rem auto;
+    position: relative !important;
+    z-index: 1056 !important;
+}
+
+.modal-content {
+    background-color: #fff !important;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+    position: relative !important;
+    z-index: 1056 !important;
+}
+
+/* Form elements */
+.form-control,
+.form-select,
+.btn {
+    position: relative !important;
+    z-index: auto !important;
+    background-color: #fff !important;
+}
+
+.form-control:focus,
+.form-select:focus,
+.btn:focus {
+    opacity: 1 !important;
+    background-color: #fff !important;
+}
+
+/* Progress bar */
+.progress {
+    height: 20px !important;
+    margin: 0 !important;
+    background-color: #e9ecef !important;
+    position: relative !important;
+    z-index: 1 !important;
+}
+
+.progress-bar {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: #fff !important;
+    text-align: center !important;
+    position: relative !important;
+    z-index: 2 !important;
+}
+
+.progress-bar.bg-success { background-color: #28a745 !important; }
+.progress-bar.bg-warning { background-color: #ffc107 !important; color: #212529 !important; }
+.progress-bar.bg-danger { background-color: #dc3545 !important; }
+
+/* Fix body styles */
+body, body.modal-open {
+    overflow: auto !important;
+    padding-right: 0 !important;
+}
+
+/* Main content container */
+.container-fluid {
+    position: relative !important;
+    z-index: 1 !important;
+    background-color: #fff !important;
+}
+
+/* Card styling */
+.card {
+    position: relative !important;
+    z-index: 1 !important;
+    background-color: #fff !important;
+}
+
+/* Table styling */
+.table {
+    position: relative !important;
+    z-index: 1 !important;
+    background-color: #fff !important;
+}
+
+/* Input group styling */
+.input-group {
+    position: relative !important;
+    z-index: 1 !important;
+    background-color: transparent !important;
+}
+
+/* Form validation states */
+.was-validated .form-control:valid,
+.was-validated .form-control:invalid,
+.was-validated .form-select:valid,
+.was-validated .form-select:invalid {
+    opacity: 1 !important;
+    background-color: #fff !important;
+} 

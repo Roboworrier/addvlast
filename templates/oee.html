@@ -1,0 +1,50 @@
+{% extends 'base_template.html' %}
+{% block content %}
+<!-- 
+Copyright (c) 2025 Diwakar Singh.
+Licensed under MIT for open-source use (see LICENSE) or
+COMPANY_LICENSE.md for proprietary use by Addverb Technologies Ltd.
+-->
+<h3>OEE Chart</h3>
+<canvas id="oeeChart" width="600" height="300"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const ctx = document.getElementById('oeeChart').getContext('2d');
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: {{ machine_names | tojson | safe }},
+        datasets: [{
+            label: 'Parts Completed',
+            data: {{ machine_parts | tojson | safe }},
+            backgroundColor: 'rgba(54, 162, 235, 0.6)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        plugins: {
+            title: {
+                display: true,
+                text: 'Machine Output - Actual Parts Completed'
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                title: {
+                    display: true,
+                    text: 'Parts Produced'
+                }
+            },
+            x: {
+                title: {
+                    display: true,
+                    text: 'Machine'
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

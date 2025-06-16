@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Live Daily Production Report</h5>
+                    <div>
+                        <button class="btn btn-success me-2" onclick="downloadDPR()">
+                            <i class="fas fa-download"></i> Export to Excel
+                        </button>
+                        <button class="btn btn-primary" onclick="refreshDPR()">
+                            <i class="fas fa-sync"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Connection Status -->
+                    <div id="connectionStatus" class="alert alert-info mb-3" style="display: none;">
+                        Connecting to server...
+                    </div>
+
+                    <!-- Filters -->
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label for="machineFilter" class="form-label">Machine</label>
+                            <select class="form-select" id="machineFilter">
+                                <option value="">All Machines</option>
+                                {% for machine in machines %}
+                                <option value="{{ machine.name }}">{{ machine.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="dateFilter" class="form-label">Date</label>
+                            <input type="date" class="form-control" id="dateFilter" value="{{ now.strftime('%Y-%m-%d') }}">
+                        </div>
+                    </div>
+
+                    <!-- DPR Table -->
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="dprTable">
+                            <thead>
+                                <tr>
+                                    <th>Date (IST)</th>
+                                    <th>Machine</th>
+                                    <th>Operator</th>
+                                    <th>Project</th>
+                                    <th>SAP ID</th>
+                                    <th>Drawing No</th>
+                                    <th>Setup Start (IST)</th>
+                                    <th>Setup End (IST)</th>
+                                    <th>First Cycle Start (IST)</th>
+                                    <th>Last Cycle End (IST)</th>
+                                    <th>Assigned Qty</th>
+                                    <th>Completed Qty</th>
+                                    <th>Passed Qty</th>
+                                    <th>Rejected Qty</th>
+                                    <th>Rework Qty</th>
+                                    <th>Std. Setup (min)</th>
+                                    <th>Actual Setup (min)</th>
+                                    <th>Std. Cycle (min)</th>
+                                    <th>Actual Cycle (min)</th>
+                                    <th>Total Cycle (min)</th>
+                                    <th>FPI Status</th>
+                                    <th>LPI Status</th>
+                                    <th>Status</th>
+                                    <th>Availability (%)</th>
+                                    <th>Performance (%)</th>
+                                    <th>Quality (%)</th>
+                                    <th>OEE (%)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in logs %}
+                                <tr>
+                                    <td>{{ log.date }}</td>
+                                    <td>{{ log.mc_do }}</td>
+                                    <td>{{ log.operator if log.operator else 'N/A' }}</td>
+                                    <td>{{ log.proj }}</td>
+                                    <td>{{ log.sap_no }}</td>
+                                    <td>{{ log.drg_no }}</td>
+                                    <td>{{ log.setup_start_ist }}</td>
+                                    <td>{{ log.setup_end_ist }}</td>
+                                    <td>{{ log.first_cycle_start_ist }}</td>
+                                    <td>{{ log.last_cycle_end_ist }}</td>
+                                    <td>{{ log.planned }}</td>
+                                    <td>{{ log.completed }}</td>
+                                    <td>{{ log.passed if log.passed is defined else 'N/A' }}</td>
+                                    <td>{{ log.rejected }}</td>
+                                    <td>{{ log.rework }}</td>
+                                    <td>{{ '%.2f'|format(log.std_setup_time) if log.std_setup_time is not none else 'N/A' }}</td>
+                                    <td>{{ '%.2f'|format(log.actual_setup_time) if log.actual_setup_time is not none else 'N/A' }}</td>
+                                    <td>{{ '%.2f'|format(log.std_cycle_time) if log.std_cycle_time is not none else 'N/A' }}</td>
+                                    <td>{{ '%.2f'|format(log.actual_cycle_time) if log.actual_cycle_time is not none else 'N/A' }}</td>
+                                    <td>{{ '%.2f'|format(log.total_cycle_time) if log.total_cycle_time is not none else 'N/A' }}</td>
+                                    <td><span class="badge bg-{{ 'success' if log.fpi_status == 'pass' else 'danger' if log.fpi_status == 'fail' else 'warning' if log.fpi_status == 'rework' else 'secondary' }}">{{ log.fpi_status|capitalize }}</span></td>
+                                    <td><span class="badge bg-{{ 'success' if log.lpi_status == 'pass' else 'danger' if log.lpi_status == 'fail' else 'warning' if log.lpi_status == 'rework' else 'secondary' }}">{{ log.lpi_status|capitalize }}</span></td>
+                                    <td>{{ log.status }}</td>
+                                    <td>{{ log.availability }}</td>
+                                    <td>{{ log.performance }}</td>
+                                    <td>{{ log.quality }}</td>
+                                    <td>{{ log.oee }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+<script src="https://cdn.datatables.net/1.10.24/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.10.24/js/dataTables.bootstrap5.min.js"></script>
+<script>
+    var socket = io();
+    var dprTable;
+    var originalDPRData = {{ dpr_data|tojson|safe }};
+    var connectionStatus = document.getElementById('connectionStatus');
+    var lastUpdateTime = new Date();
+    
+    // Socket.IO connection handling
+    socket.on('connect', function() {
+        console.log('Connected to server');
+        connectionStatus.style.display = 'none';
+        // Request initial data
+        socket.emit('request_update');
+    });
+
+    socket.on('disconnect', function() {
+        console.log('Disconnected from server');
+        connectionStatus.style.display = 'block';
+        connectionStatus.className = 'alert alert-warning mb-3';
+        connectionStatus.textContent = 'Lost connection to server. Attempting to reconnect...';
+    });
+
+    socket.on('connect_error', function(error) {
+        console.log('Connection error:', error);
+        connectionStatus.style.display = 'block';
+        connectionStatus.className = 'alert alert-danger mb-3';
+        connectionStatus.textContent = 'Error connecting to server. Please check your connection.';
+    });
+    
+    $(document).ready(function() {
+        // Initialize DataTable
+        dprTable = $('#dprTable').DataTable({
+            order: [[0, 'desc'], [1, 'asc']],
+            pageLength: 25,
+            dom: 'Bfrtip',
+            buttons: ['copy', 'csv', 'excel', 'pdf', 'print']
+        });
+        
+        // Apply filters
+        $('#machineFilter, #dateFilter').on('change', function() {
+            filterDPRData();
+        });
+        
+        // Initial data load
+        updateDPRTable(originalDPRData);
+
+        // Check for stale data every minute
+        setInterval(function() {
+            var now = new Date();
+            var timeSinceLastUpdate = (now - lastUpdateTime) / 1000;
+            if (timeSinceLastUpdate > 60) {  // If no update for more than 1 minute
+                connectionStatus.style.display = 'block';
+                connectionStatus.className = 'alert alert-warning mb-3';
+                connectionStatus.textContent = 'No updates received for ' + Math.floor(timeSinceLastUpdate) + ' seconds. Data may be stale.';
+            }
+        }, 60000);
+    });
+    
+    // Socket.IO event handlers
+    socket.on('dpr_update', function(data) {
+        console.log('Received DPR update:', data);
+        if (data && data.data) {
+            originalDPRData = data.data;
+            updateDPRTable(originalDPRData);
+            lastUpdateTime = new Date();
+            connectionStatus.style.display = 'none';
+        } else {
+            console.log('Received invalid DPR data:', data);
+        }
+    });
+
+    function updateDPRTable(data) {
+        console.log('Updating table with data:', data);
+        // Clear existing data
+        dprTable.clear();
+        
+        // Filter data based on current filters
+        var filteredData = filterData(data);
+        
+        // Add filtered data
+        dprTable.rows.add(filteredData.map(function(item) {
+            return [
+                item.date || '',
+                item.mc_do || '',
+                item.operator || '',
+                item.proj || '',
+                item.sap_no || '',
+                item.drg_no || '',
+                item.setup_start_ist || '',
+                item.setup_end_ist || '',
+                item.first_cycle_start_ist || '',
+                item.last_cycle_end_ist || '',
+                item.planned || 0,
+                item.completed || 0,
+                item.passed || '',
+                item.rejected || '',
+                item.rework || '',
+                item.std_setup_time || '',
+                item.actual_setup_time || '',
+                item.std_cycle_time || '',
+                item.actual_cycle_time || '',
+                item.total_cycle_time || '',
+                item.fpi_status || '',
+                item.lpi_status || '',
+                item.status || '',
+                item.availability || '',
+                item.performance || '',
+                item.quality || '',
+                item.oee || ''
+            ];
+        }));
+        
+        // Redraw table
+        dprTable.draw();
+        console.log('Table updated');
+    }
+
+    function filterData(data) {
+        var machine = $('#machineFilter').val();
+        var date = $('#dateFilter').val();
+        return data.filter(function(item) {
+            var matchMachine = !machine || item.mc_do === machine;
+            var matchDate = !date || (item.date && item.date.startsWith(date));
+            return matchMachine && matchDate;
+        });
+    }
+
+    function filterDPRData() {
+        updateDPRTable(originalDPRData);
+    }
+
+    function refreshDPR() {
+        console.log('Manually refreshing DPR data');
+        socket.emit('request_update');
+    }
+
+    function downloadDPR() {
+        window.location.href = "{{ url_for('download_live_dpr') }}";
+    }
+
+    // Request updates periodically
+    setInterval(function() {
+        if (socket.connected) {
+            console.log('Requesting periodic update');
+            socket.emit('request_update');
+        }
+    }, 30000);
+</script>
+{% endblock %} 

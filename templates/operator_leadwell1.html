@@ -1,0 +1,411 @@
+{% extends "base.html" %}
+
+{% block title %}Leadwell-1 Operator Panel - ChipSight{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <h1 class="mt-4">Leadwell-1 Operator Panel</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item active">Machine Control</li>
+    </ol>
+
+    <!-- Machine Stats -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6">
+            <div class="card bg-primary text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="me-3">
+                            <div class="text-white-75">Parts Today</div>
+                            <div class="text-lg fw-bold">{{ parts_today }}</div>
+                        </div>
+                        <i class="fas fa-cogs fa-2x text-white-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="card bg-success text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="me-3">
+                            <div class="text-white-75">Machine Hours</div>
+                            <div class="text-lg fw-bold">{{ "%.1f"|format(uptime|default(0)) }}</div>
+                        </div>
+                        <i class="fas fa-clock fa-2x text-white-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Drawing Selection & Info -->
+        <div class="col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-primary text-white">
+                    <i class="fas fa-ruler-combined me-1"></i> Leadwell-1 Drawing & Setup
+                </div>
+                <div class="card-body">
+                    <!-- Machine Stats -->
+                    <div class="alert alert-info mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>Parts Today:</strong> {{ parts_today }}
+                            </div>
+                            <div>
+                                <strong>Uptime:</strong> {{ "%.2f"|format(uptime|default(0)) }} hrs
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if active_logs %}
+                        {% set pending_fpi_lpi_logs = active_logs | selectattr('current_status', 'in', ['cycle_completed_pending_fpi', 'cycle_completed_pending_lpi']) | list %}
+                        {% if pending_fpi_lpi_logs %}
+                            <div class="alert alert-warning mb-3">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                <strong>Attention:</strong> You have the following logs pending FPI/LPI approval:<br>
+                                <ul class="mb-0">
+                                    {% for log in pending_fpi_lpi_logs %}
+                                        <li>Drawing: <strong>{{ log.drawing_rel.drawing_number }}</strong> (Log ID: {{ log.id }}) - Status: <span class="badge bg-warning text-dark">{{ log.current_status | replace('_', ' ') | title }}</span></li>
+                                    {% endfor %}
+                                </ul>
+                                <span class="text-muted">You can continue with a new drawing, but please ensure pending FPI/LPI are completed by Quality.</span>
+                            </div>
+                        {% endif %}
+                    {% endif %}
+                    <form method="POST" action="{{ url_for('operator_panel_leadwell1') }}" class="mb-3">
+                        <input type="hidden" name="action" value="select_drawing_and_start_session">
+                        <div class="input-group">
+                            <input type="text" class="form-control" name="drawing_number_input" placeholder="Enter Drawing Number" value="{{ drawing_number_input if drawing_number_input }}">
+                            <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i>Select</button>
+                        </div>
+                    </form>
+
+                    <!-- Assigned Drawings Table -->
+                    <div class="table-responsive" style="overflow-x: auto;">
+                        <table class="table table-hover table-sm" style="white-space: nowrap;">
+                            <thead>
+                                <tr>
+                                    <th>Drawing</th>
+                                    <th>Tool</th>
+                                    <th>Assigned Qty</th>
+                                    <th>Completed</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="assignmentTableBody">
+                                {% if assignment_rows %}
+                                    {% for assignment in assignment_rows %}
+                                        <tr>
+                                            <td>{{ assignment['drawing_number'] }}</td>
+                                            <td>{{ assignment['tool_number'] }}</td>
+                                            <td>{{ assignment['assigned_quantity'] }}</td>
+                                            <td>{{ assignment['completed_quantity'] }}</td>
+                                            <td>
+                                                <span class="badge {% if assignment['status'] == 'running' %}bg-success{% elif assignment['status'] == 'assigned' %}bg-primary{% elif assignment['status'] == 'completed' %}bg-secondary{% else %}bg-warning{% endif %}">
+                                                    {{ assignment['status'] | title }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {% if assignment['status'] == 'assigned' %}
+                                                    <form method="POST" action="" style="display: inline;">
+                                                        <input type="hidden" name="action" value="start_setup">
+                                                        <input type="hidden" name="drawing_number_input" value="{{ assignment['drawing_number'] }}">
+                                                        <button type="submit" class="btn btn-sm btn-primary">
+                                                            <i class="fas fa-play me-1"></i>Start
+                                                        </button>
+                                                    </form>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="6" class="text-center">No drawings assigned to this machine</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    {% if active_drawing %}
+                        <p class="mb-1"><strong>Selected Drawing:</strong> {{ active_drawing.drawing_number }}</p>
+                        <p class="mb-1"><strong>Assigned:</strong> {{ assigned_qty }} units</p>
+                        <p class="mb-1"><strong>Completed:</strong> {{ completed_qty }} units</p>
+                        <p class="mb-1"><strong>Passed:</strong> {{ passed_qty }} units</p>
+                        <p class="mb-1"><strong>FPI Status:</strong> {{ fpi_status|capitalize }}</p>
+                        <p class="mb-1"><strong>LPI Status:</strong> {{ lpi_status|capitalize }}</p>
+                        {% if current_log and current_log.drawing_id == active_drawing.id %}
+                            <p class="mb-1"><strong>Target for this Run:</strong> {{ current_log.run_planned_quantity | default('N/A') }} units</p>
+                            <p class="mb-1"><strong>Completed in this Run:</strong> {{ current_log.run_completed_quantity | default('N/A') }} units</p>
+                        {% else %}
+                            <p class="mb-1"><small class="text-muted">No active run for this drawing by you. Start setup to create one.</small></p>
+                        {% endif %}
+                        <p class="mb-1"><small><strong>Std. Setup:</strong> {{ active_drawing.end_product_rel.setup_time_std if active_drawing.end_product_rel else 'N/A' }} min</small></p>
+                        <p class="mb-1"><small><strong>Std. Cycle:</strong> {{ active_drawing.end_product_rel.cycle_time_std if active_drawing.end_product_rel else 'N/A' }} min/pc</small></p>
+                        <hr class="my-2">
+                        <small class="text-muted d-block">
+                            SAP ID: {{ active_drawing.sap_id }} | 
+                            Product: {{ active_drawing.end_product_rel.name if active_drawing.end_product_rel else 'N/A' }}
+                        </small>
+                        {% if active_drawing.end_product_rel and active_drawing.end_product_rel.project_rel %}
+                        <small class="text-muted d-block">
+                            Project: {{ active_drawing.end_product_rel.project_rel.project_code }}
+                        </small>
+                        {% endif %}
+                    {% else %}
+                        <p class="text-muted">No drawing selected. Please enter a drawing number.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="col-lg-8 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-primary text-white">
+                    <i class="fas fa-cogs me-1"></i> Leadwell-1 Production Actions
+                </div>
+                <div class="card-body">
+                    {# Machine Breakdown Status and Controls #}
+                    {% if current_machine_obj %}
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                {% if current_machine_obj.status == 'breakdown' %}
+                                    <div class="alert alert-danger d-flex align-items-center" role="alert">
+                                        <i class="fas fa-exclamation-triangle fa-2x me-3"></i>
+                                        <div>
+                                            <strong>Leadwell-1 is in BREAKDOWN!</strong> All production actions are disabled.
+                                            <form method="POST" action="{{ url_for('operator_panel_leadwell1') }}" class="mt-2">
+                                                <button type="submit" name="action" value="mark_machine_healthy" class="btn btn-sm btn-success">
+                                                    <i class="fas fa-tools me-1"></i> Mark Machine Healthy
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <form method="POST" action="{{ url_for('operator_panel_leadwell1') }}" class="float-end">
+                                        <button type="submit" name="action" value="report_breakdown" class="btn btn-sm btn-outline-danger">
+                                            <i class="fas fa-skull-crossbones me-1"></i> Report Machine Breakdown
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    {% if not active_drawing and current_machine_obj and current_machine_obj.status != 'breakdown' %}
+                        <p class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> Please select a drawing number to enable actions.</p>
+                    {% elif not active_drawing %}
+                         <p class="text-muted"><i class="fas fa-info-circle me-1"></i> Select a drawing to begin.</p>
+                    {% endif %}
+
+                    {# Disable all actions if machine is in breakdown #}
+                    {% set machine_operational = current_machine_obj and current_machine_obj.status != 'breakdown' %}
+
+                    <form method="POST" action="{{ url_for('operator_panel_leadwell1') }}">
+                        <input type="hidden" name="drawing_number_input" value="{{ active_drawing.drawing_number if active_drawing else '' }}">
+                        <div class="row gy-3">
+                            <!-- Setup Actions -->
+                            <div class="col-md-6 col-xl-4">
+                                {% set allow_new_setup = machine_operational and active_drawing and (not current_log or current_log.drawing_id != active_drawing.id or current_log.current_status in ['pending_setup', 'lpi_completed', 'admin_closed', 'fpi_failed_setup_pending']) %}
+                                <button type="submit" name="action" value="start_setup" class="btn btn-lg btn-outline-primary w-100"
+                                        {% if not allow_new_setup %}disabled{% endif %}>
+                                    <i class="fas fa-tools me-2"></i>Start Setup
+                                </button>
+                                <small class="form-text text-muted d-block">Begin new setup for selected drawing. Creates new log.</small>
+                            </div>
+                            <div class="col-md-6 col-xl-4">
+                                <button type="submit" name="action" value="setup_done" class="btn btn-lg btn-primary w-100" 
+                                        {% if not machine_operational or not current_log or current_log.current_status != 'setup_started' or (current_log.drawing_id != active_drawing.id if active_drawing else True) %}disabled{% endif %}>
+                                    <i class="fas fa-check-double me-2"></i>Setup Done
+                                </button>
+                                <small class="form-text text-muted d-block">Mark current setup as complete.</small>
+                            </div>
+                            <div class="col-md-6 col-xl-4">
+                                <button type="submit" name="action" value="cancel_current_drawing_log" class="btn btn-lg btn-outline-danger w-100"
+                                        {% if not machine_operational or not current_log or current_log.current_status in ['lpi_completed', 'admin_closed'] or (current_log.drawing_id != active_drawing.id if active_drawing else True) %}disabled{% endif %}>
+                                    <i class="fas fa-times-circle me-2"></i>Cancel Log
+                                </button>
+                                <small class="form-text text-muted d-block">Cancel current active log for this drawing.</small>
+                            </div>
+                            
+                            <div class="col-12"><hr></div>
+
+                            <!-- Cycle Actions -->
+                            <div class="col-md-4">
+                                <button type="submit" name="action" value="cycle_start" class="btn btn-lg btn-success w-100"
+                                        {% if not machine_operational or not current_log or
+                                           current_log.current_status not in ['setup_done', 'fpi_passed_ready_for_cycle', 'cycle_paused'] or
+                                           (current_log.drawing_id != active_drawing.id if active_drawing else True) %}disabled{% endif %}>
+                                    <i class="fas fa-play me-2"></i>Start Cycle
+                                </button>
+                                <small class="form-text text-muted d-block">Begin production cycle.</small>
+                            </div>
+                            <div class="col-md-4">
+                                <button type="submit" name="action" value="cycle_complete" class="btn btn-lg btn-outline-success w-100"
+                                        {% if not machine_operational or not current_log or current_log.current_status != 'cycle_started' or (current_log.drawing_id != active_drawing.id if active_drawing else True) %}disabled{% endif %}>
+                                    <i class="fas fa-check-circle me-2"></i>Complete Cycle
+                                </button>
+                                <small class="form-text text-muted d-block">Mark current cycle as complete.</small>
+                            </div>
+                            <div class="col-md-4">
+                                <button type="submit" name="action" value="cycle_pause" class="btn btn-lg btn-warning w-100"
+                                        {% if not machine_operational or not current_log or current_log.current_status != 'cycle_started' or (current_log.drawing_id != active_drawing.id if active_drawing else True) %}disabled{% endif %}>
+                                    <i class="fas fa-pause me-2"></i>Pause Cycle
+                                </button>
+                                <small class="form-text text-muted d-block">Temporarily pause current cycle.</small>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Performance Chart - showing hourly production
+    const performanceCtx = document.getElementById('performanceChart').getContext('2d');
+    const hours = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
+    const partsProduced = [5, 8, 12, 15, 18, 22, 25, 28, 30]; // Mock data
+    const targetParts = [6, 12, 18, 24, 30, 36, 42, 48, 54]; // Mock target
+
+    new Chart(performanceCtx, {
+        type: 'line',
+        data: {
+            labels: hours,
+            datasets: [
+                {
+                    label: 'Parts Produced',
+                    data: partsProduced,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderWidth: 3,
+                    fill: true
+                },
+                {
+                    label: 'Target',
+                    data: targetParts,
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    fill: false
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Parts Count'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Time'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top'
+                }
+            }
+        }
+    });
+
+    // Efficiency Gauge Chart
+    const efficiencyCtx = document.getElementById('efficiencyGauge').getContext('2d');
+    const efficiency = 85; // Mock efficiency percentage
+
+    new Chart(efficiencyCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Efficiency', 'Remaining'],
+            datasets: [{
+                data: [efficiency, 100 - efficiency],
+                backgroundColor: [
+                    efficiency >= 80 ? 'rgba(40, 167, 69, 0.8)' : 
+                    efficiency >= 60 ? 'rgba(255, 193, 7, 0.8)' : 
+                    'rgba(220, 53, 69, 0.8)',
+                    'rgba(233, 236, 239, 0.8)'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '70%',
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        },
+        plugins: [{
+            beforeDraw: function(chart) {
+                const width = chart.width;
+                const height = chart.height;
+                const ctx = chart.ctx;
+                
+                ctx.restore();
+                const fontSize = (height / 114).toFixed(2);
+                ctx.font = fontSize + "em sans-serif";
+                ctx.textBaseline = "middle";
+                ctx.fillStyle = "#333";
+                
+                const text = efficiency + "%";
+                const textX = Math.round((width - ctx.measureText(text).width) / 2);
+                const textY = height / 2;
+                
+                ctx.fillText(text, textX, textY);
+                ctx.save();
+            }
+        }]
+    });
+
+    // Update uptime display (mock calculation)
+    function updateUptime() {
+        const now = new Date();
+        const startOfShift = new Date();
+        startOfShift.setHours(8, 0, 0, 0); // Assuming 8 AM start
+        
+        if (now > startOfShift) {
+            const uptimeMs = now - startOfShift;
+            const uptimeHours = (uptimeMs / (1000 * 60 * 60)).toFixed(1);
+            document.getElementById('uptime-display').textContent = uptimeHours + 'h';
+        }
+    }
+
+    updateUptime();
+    setInterval(updateUptime, 60000); // Update every minute
+});
+</script>
+{% endblock %}

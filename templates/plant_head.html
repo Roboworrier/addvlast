@@ -1,0 +1,618 @@
+{% extends "base.html" %}
+
+{% block title %}Plant Head Dashboard - ChipSight{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/plant_head.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+<style>
+    .chart-container { position: relative; height: 420px; width: 100%; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; margin-bottom: 1rem; }
+    .card-body { padding: 1rem; }
+    .chart-description { font-size: 1rem; color: #333; margin-bottom: 0.5rem; font-style: italic; }
+    .search-container {
+        margin-bottom: 2rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+    .search-results { margin-top: 1rem; display: none; }
+    .status-card {
+        margin-bottom: 1rem;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .status-value { 
+        font-size: 2rem; 
+        font-weight: bold;
+        color: #2c3e50;
+    }
+    .status-label { 
+        font-size: 1rem; 
+        color: #666;
+        margin-top: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message|e }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div id="connectionStatus" class="alert alert-warning d-none">
+        Lost connection to server. Attempting to reconnect...
+    </div>
+
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Plant Head Dashboard</h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            {% if digital_twin_url %}
+            <a href="{{ digital_twin_url }}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-industry me-1"></i>Digital Twin
+            </a>
+            {% endif %}
+            <form method="POST" action="{{ url_for('logout_general') }}" class="d-inline ms-2">
+                <button type="submit" class="btn btn-sm btn-outline-danger">
+                    <i class="fas fa-sign-out-alt me-1"></i>Logout
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div id="connectionStatus" class="alert alert-warning d-none">
+        Lost connection to server. Attempting to reconnect...
+    </div>
+
+    <!-- Search -->
+    <div class="search-container">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <input type="text" id="sapIdSearch" class="form-control" placeholder="Search by SAP ID...">
+                    <button class="btn btn-primary" type="button" onclick="searchDrawing()">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="searchResults" class="search-results">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Drawing Details</h5>
+                    <div id="drawingDetails"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden data fields for charts -->
+    <input type="hidden" id="oee-data" value="{{ oee_data|tojson|safe }}">
+    <input type="hidden" id="shift-data" value="{{ shift_data|tojson|safe }}">
+    <input type="hidden" id="machine-names" value="{{ machine_names|tojson|safe }}">
+    <input type="hidden" id="shift-labels" value="{{ shift_labels|tojson|safe }}">
+    <input type="hidden" id="production-summary" value="{{ production_summary|tojson|safe }}">
+
+    <!-- Status Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="status-card">
+                <div class="card-body text-center">
+                    <div class="status-value text-primary">{{ todays_production_count }}</div>
+                    <div class="status-label">Today's Production</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="status-card">
+                <div class="card-body text-center">
+                    <div class="status-value text-warning">{{ pending_quality_checks }}</div>
+                    <div class="status-label">Pending Quality Checks</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="status-card">
+                <div class="card-body text-center">
+                    <div class="status-value text-success">{{ machine_utilization }}%</div>
+                    <div class="status-label">Machine Utilization</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="status-card">
+                <div class="card-body text-center">
+                    <div class="status-value text-info">{{ average_oee|round(1) }}%</div>
+                    <div class="status-label">Average OEE</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Machine Status -->
+    <div class="card mb-4">
+        <div class="card-header">Machine Status</div>
+        <div class="card-body">
+            <div class="row" id="machineStatus">
+                {% for machine in machines %}
+                <div class="col-md-4 mb-3">
+                    <div class="card">
+                        <div class="card-header {% if machine.status == 'running' %}bg-success{% elif machine.status == 'idle' %}bg-warning{% else %}bg-danger{% endif %} text-white">
+                            <h5 class="mb-0">{{ machine.name }}</h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-1"><strong>Status:</strong> {{ machine.status|title }}</p>
+                            <p class="mb-1"><strong>Current Job:</strong> {{ machine.current_job or 'No active job' }}</p>
+                            <p class="mb-0"><strong>Operator:</strong> {{ machine.current_operator or 'No operator' }}</p>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Production Summary -->
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="fas fa-table me-2"></i>Production Summary</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover" id="productionTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Product</th>
+                            <th>SAP ID</th>
+                            <th>Planned Qty</th>
+                            <th>Completed Qty</th>
+                            <th>Rejected Qty</th>
+                            <th>Rework Qty</th>
+                            <th>Completion %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in production_summary %}
+                        <tr>
+                            <td>{{ row['Product'] }}</td>
+                            <td>{{ row['SAP ID'] }}</td>
+                            <td>{{ row['Planned Qty'] }}</td>
+                            <td class="text-success">{{ row['Completed Qty'] }}</td>
+                            <td class="text-danger">{{ row['Rejected Qty'] }}</td>
+                            <td class="text-warning">{{ row['Rework Qty'] }}</td>
+                            <td>
+                                <div class="progress">
+                                    <div class="progress-bar {% if row['Completion %'] >= 100 %}bg-success{% elif row['Completion %'] >= 75 %}bg-info{% elif row['Completion %'] >= 50 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                         role="progressbar" 
+                                         style="width: {{ row['Completion %'] }}%"
+                                         aria-valuenow="{{ row['Completion %'] }}" 
+                                         aria-valuemin="0" 
+                                         aria-valuemax="100">{{ row['Completion %'] }}%</div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>OEE by Machine</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-description">This bar chart shows the Overall Equipment Effectiveness (OEE) for each machine. OEE is a measure of how well each machine is performing as a percentage of its full potential.</div>
+                    <div class="chart-container">
+                        <canvas id="oeeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Production by Shift</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-description">This bar chart displays the number of parts produced in each shift (Morning, Afternoon, Night) for today. It helps visualize shift-wise production distribution.</div>
+                    <div class="chart-container">
+                        <canvas id="shiftChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activities -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">Recent Quality, Rework, and Scrap Events</div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>Project Code</th>
+                                    <th>SAP ID</th>
+                                    <th>Drawing Number</th>
+                                    <th>Type</th>
+                                    <th>Reason</th>
+                                    <th>Time</th>
+                                    <th>By Whom</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in recent_quality_checks %}
+                                <tr>
+                                    <td>{{ item.operator_log_rel.drawing_rel.end_product_rel.name if item.operator_log_rel and item.operator_log_rel.drawing_rel and item.operator_log_rel.drawing_rel.end_product_rel else 'N/A' }}</td>
+                                    <td>{{ item.operator_log_rel.drawing_rel.sap_id if item.operator_log_rel and item.operator_log_rel.drawing_rel else 'N/A' }}</td>
+                                    <td>{{ item.operator_log_rel.drawing_rel.drawing_number if item.operator_log_rel and item.operator_log_rel.drawing_rel else 'N/A' }}</td>
+                                    <td>QC {{ item.result|capitalize }}</td>
+                                    <td>{{ item.rejection_reason if item.result == 'reject' or item.result == 'rework' else '-' }}</td>
+                                    <td>{{ item.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                    <td>{{ item.inspector_name }}</td>
+                                </tr>
+                                {% endfor %}
+                                {% for item in recent_rework %}
+                                <tr>
+                                    <td>{{ item.drawing_rel.end_product_rel.name if item.drawing_rel and item.drawing_rel.end_product_rel else 'N/A' }}</td>
+                                    <td>{{ item.drawing_rel.sap_id if item.drawing_rel else 'N/A' }}</td>
+                                    <td>{{ item.drawing_rel.drawing_number if item.drawing_rel else 'N/A' }}</td>
+                                    <td>Rework</td>
+                                    <td>{{ item.originating_quality_check_rel.rejection_reason if item.originating_quality_check_rel else '-' }}</td>
+                                    <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                    <td>{{ item.source_operator_log_rel.operator_id if item.source_operator_log_rel else 'N/A' }}</td>
+                                </tr>
+                                {% endfor %}
+                                {% for item in recent_scrap %}
+                                <tr>
+                                    <td>{{ item.drawing_rel.end_product_rel.name if item.drawing_rel and item.drawing_rel.end_product_rel else 'N/A' }}</td>
+                                    <td>{{ item.drawing_rel.sap_id if item.drawing_rel else 'N/A' }}</td>
+                                    <td>{{ item.drawing_rel.drawing_number if item.drawing_rel else 'N/A' }}</td>
+                                    <td>Reject</td>
+                                    <td>{{ item.reason }}</td>
+                                    <td>{{ item.scrapped_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                    <td>{{ item.scrapped_by }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function escapeHtml(str) {
+    return str.replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
+              .replace(/'/g, "&#039;");
+}
+
+function searchDrawing() {
+    const sapId = document.getElementById('sapIdSearch').value.trim();
+    if (!sapId) return alert('Please enter a SAP ID');
+
+    fetch(`/api/search_drawing/${encodeURIComponent(sapId)}`)
+    .then(res => res.json())
+    .then(data => {
+        const results = document.getElementById('drawingDetails');
+        document.getElementById('searchResults').style.display = 'block';
+        if (data.error) return results.innerHTML = `<div class="alert alert-danger">${escapeHtml(data.error)}</div>`;
+        if (!data.exists) return results.innerHTML = `<div class="alert alert-warning">No drawing found with SAP ID: ${escapeHtml(sapId)}</div>`;
+
+        let html = `<table class="table table-bordered">
+            <tr><th>Drawing Number</th><td>${escapeHtml(data.drawing_number)}</td></tr>
+            <tr><th>SAP ID</th><td>${escapeHtml(data.sap_id)}</td></tr>
+            <tr><th>End Product</th><td>${escapeHtml(data.end_product || 'N/A')}</td></tr>
+            <tr><th>Completed Quantity</th><td>${escapeHtml(data.completed_quantity.toString())}</td></tr>
+            <tr><th>Rejected Quantity</th><td>${escapeHtml(data.rejected_quantity.toString())}</td></tr>
+            <tr><th>Rework Quantity</th><td>${escapeHtml(data.rework_quantity.toString())}</td></tr>
+        </table>`;
+
+        if (data.last_operation) {
+            html += `<h6 class="mt-3">Last Operation</h6>
+            <table class="table table-bordered">
+                <tr><th>Operator</th><td>${escapeHtml(data.last_operation.operator)}</td></tr>
+                <tr><th>Machine</th><td>${escapeHtml(data.last_operation.machine)}</td></tr>
+                <tr><th>Status</th><td>${escapeHtml(data.last_operation.status)}</td></tr>
+                <tr><th>Timestamp</th><td>${escapeHtml(data.last_operation.timestamp)}</td></tr>
+            </table>`;
+        }
+
+        results.innerHTML = html;
+    })
+    .catch(err => {
+        document.getElementById('drawingDetails').innerHTML = `<div class="alert alert-danger">Error: ${escapeHtml(err.message)}</div>`;
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('sapIdSearch').addEventListener('keypress', e => {
+        if (e.key === 'Enter') searchDrawing();
+    });
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Get data from hidden fields
+    const oeeData = JSON.parse(document.getElementById('oee-data').value || '[]');
+    const shiftData = JSON.parse(document.getElementById('shift-data').value || '[]');
+    const machineNames = JSON.parse(document.getElementById('machine-names').value || '[]');
+    const shiftLabels = JSON.parse(document.getElementById('shift-labels').value || '[]');
+
+    // OEE Chart
+    const oeeCtx = document.getElementById('oeeChart').getContext('2d');
+    const oeeChart = new Chart(oeeCtx, {
+        type: 'bar',
+        data: {
+            labels: machineNames,
+            datasets: [{
+                label: 'OEE (%) for Each Machine',
+                data: oeeData,
+                backgroundColor: oeeData.map(value => {
+                    if (value >= 85) return 'rgba(40, 167, 69, 0.8)';  // Green
+                    if (value >= 60) return 'rgba(255, 193, 7, 0.8)';  // Yellow
+                    return 'rgba(220, 53, 69, 0.8)';  // Red
+                }),
+                borderColor: oeeData.map(value => {
+                    if (value >= 85) return 'rgb(40, 167, 69)';  // Green
+                    if (value >= 60) return 'rgb(255, 193, 7)';  // Yellow
+                    return 'rgb(220, 53, 69)';  // Red
+                }),
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'OEE (%)'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Machine Name'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        boxWidth: 20,
+                        font: { size: 14 },
+                        color: '#333'
+                    }
+                },
+                title: {
+                    display: true,
+                    text: 'Overall Equipment Effectiveness (OEE) by Machine',
+                    font: { size: 18 },
+                    color: '#222'
+                },
+                tooltip: {
+                    enabled: true,
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y}%`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Shift Production Chart
+    const shiftCtx = document.getElementById('shiftChart').getContext('2d');
+    const shiftChart = new Chart(shiftCtx, {
+        type: 'bar',
+        data: {
+            labels: shiftLabels,
+            datasets: [{
+                label: 'Parts Produced in Shift',
+                data: shiftData,
+                backgroundColor: [
+                    'rgba(255, 193, 7, 0.8)',  // Morning - Yellow
+                    'rgba(40, 167, 69, 0.8)',  // Afternoon - Green
+                    'rgba(23, 162, 184, 0.8)'  // Night - Blue
+                ],
+                borderColor: [
+                    'rgb(255, 193, 7)',
+                    'rgb(40, 167, 69)',
+                    'rgb(23, 162, 184)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Parts Produced'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Shift'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        boxWidth: 20,
+                        font: { size: 14 },
+                        color: '#333'
+                    }
+                },
+                title: {
+                    display: true,
+                    text: 'Production by Shift (Today)',
+                    font: { size: 18 },
+                    color: '#222'
+                },
+                tooltip: {
+                    enabled: true,
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y}`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Socket.IO connection for real-time updates
+    const socket = io();
+    const connectionStatus = document.getElementById('connectionStatus');
+    
+    socket.on('connect', () => {
+        console.log('Connected to server');
+        connectionStatus.classList.add('d-none');
+    });
+
+    socket.on('disconnect', () => {
+        console.log('Disconnected from server');
+        connectionStatus.classList.remove('d-none');
+    });
+
+    socket.on('plant_head_update', (data) => {
+        // Update OEE Chart
+        if (data.oee_data) {
+            oeeChart.data.datasets[0].data = data.oee_data;
+            oeeChart.data.datasets[0].backgroundColor = data.oee_data.map(value => {
+                if (value >= 85) return 'rgba(40, 167, 69, 0.8)';
+                if (value >= 60) return 'rgba(255, 193, 7, 0.8)';
+                return 'rgba(220, 53, 69, 0.8)';
+            });
+            oeeChart.data.datasets[0].borderColor = data.oee_data.map(value => {
+                if (value >= 85) return 'rgb(40, 167, 69)';
+                if (value >= 60) return 'rgb(255, 193, 7)';
+                return 'rgb(220, 53, 69)';
+            });
+            oeeChart.update();
+        }
+        
+        // Update Shift Chart
+        if (data.shift_data) {
+            shiftChart.data.datasets[0].data = data.shift_data;
+            shiftChart.update();
+        }
+
+        // Update status cards
+        if (data.todays_production_count !== undefined) {
+            document.querySelector('.status-value.text-primary').textContent = data.todays_production_count;
+        }
+        if (data.pending_quality_checks !== undefined) {
+            document.querySelector('.status-value.text-warning').textContent = data.pending_quality_checks;
+        }
+        if (data.machine_utilization !== undefined) {
+            document.querySelector('.status-value.text-success').textContent = data.machine_utilization + '%';
+        }
+        if (data.average_oee !== undefined) {
+            document.querySelector('.status-value.text-info').textContent = data.average_oee + '%';
+        }
+
+        // Update production summary table
+        if (data.production_summary) {
+            const tbody = document.querySelector('#productionTable tbody');
+            tbody.innerHTML = data.production_summary.map(row => `
+                <tr>
+                    <td>${escapeHtml(row.Product)}</td>
+                    <td>${escapeHtml(row['SAP ID'])}</td>
+                    <td>${escapeHtml(row['Planned Qty'].toString())}</td>
+                    <td class="text-success">${escapeHtml(row['Completed Qty'].toString())}</td>
+                    <td class="text-danger">${escapeHtml(row['Rejected Qty'].toString())}</td>
+                    <td class="text-warning">${escapeHtml(row['Rework Qty'].toString())}</td>
+                    <td>
+                        <div class="progress">
+                            <div class="progress-bar ${row['Completion %'] >= 100 ? 'bg-success' : row['Completion %'] >= 75 ? 'bg-info' : row['Completion %'] >= 50 ? 'bg-warning' : 'bg-danger'}" 
+                                 role="progressbar" 
+                                 style="width: ${row['Completion %']}%"
+                                 aria-valuenow="${row['Completion %']}" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">${row['Completion %']}%</div>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Update recent quality checks table
+        if (data.recent_quality_checks) {
+            const tbody = document.querySelector('#recentEventsTable tbody');
+            tbody.innerHTML = data.recent_quality_checks.map(item => `
+                <tr>
+                    <td>${escapeHtml(item.project_code)}</td>
+                    <td>${escapeHtml(item.sap_id)}</td>
+                    <td>${escapeHtml(item.drawing_number)}</td>
+                    <td>${escapeHtml(item.type)}</td>
+                    <td>${escapeHtml(item.reason)}</td>
+                    <td>${escapeHtml(item.timestamp)}</td>
+                    <td>${escapeHtml(item.by_whom)}</td>
+                </tr>
+            `).join('');
+        }
+
+        // Update machine status
+        if (data.machine_status && data.machine_names) {
+            const machineStatusDiv = document.getElementById('machineStatus');
+            machineStatusDiv.innerHTML = data.machine_names.map((name, index) => {
+                const status = data.machine_status.running[index] ? 'running' : 
+                              data.machine_status.setup[index] ? 'setup' : 'stopped';
+                const bgColor = status === 'running' ? 'bg-success' : 
+                               status === 'setup' ? 'bg-warning' : 'bg-danger';
+                return `
+                    <div class="col-md-4 mb-3">
+                        <div class="card">
+                            <div class="card-header ${bgColor} text-white">
+                                <h5 class="mb-0">${escapeHtml(name)}</h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="mb-1"><strong>Status:</strong> ${status.charAt(0).toUpperCase() + status.slice(1)}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,138 @@
+/* Modal styling to prevent flickering */
+.modal {
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+}
+
+.modal-dialog {
+    margin: 1.75rem auto;
+    position: relative;
+    z-index: 1056;
+}
+
+.modal-content {
+    background-color: #fff;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+    position: relative;
+    z-index: 1056;
+    opacity: 1 !important;
+}
+
+/* Ensure proper stacking context */
+.modal-backdrop {
+    z-index: 1055;
+}
+
+/* Smooth transitions */
+.modal.fade .modal-dialog {
+    transition: transform 0.2s ease-out;
+    transform: translate(0, -50px);
+}
+
+.modal.show .modal-dialog {
+    transform: none;
+}
+
+/* Fix body styles when modal is open */
+body.modal-open {
+    overflow: hidden;
+    padding-right: 0 !important;
+}
+
+/* Ensure form elements stay on top */
+.modal-body form {
+    position: relative;
+    z-index: 1057;
+}
+
+/* Button hover states */
+.modal .btn:hover {
+    transform: translateY(-1px);
+    transition: transform 0.2s;
+}
+
+/* Prevent text selection during modal transitions */
+.modal * {
+    user-select: none;
+}
+
+.modal.show * {
+    user-select: text;
+}
+
+/* Action buttons and status indicators */
+.btn-info {
+    color: #fff;
+    background-color: #17a2b8;
+    border-color: #17a2b8;
+}
+
+.btn-info:hover {
+    color: #fff;
+    background-color: #138496;
+    border-color: #117a8b;
+}
+
+.d-flex.flex-column.gap-2 {
+    row-gap: 0.5rem !important;
+}
+
+/* Status badges */
+.badge {
+    font-size: 0.875rem;
+    padding: 0.4em 0.6em;
+}
+
+.badge i {
+    margin-right: 0.25rem;
+}
+
+/* Spinning icon animation */
+.fa-spin {
+    animation: fa-spin 2s infinite linear;
+}
+
+@keyframes fa-spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Info text */
+.text-muted {
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+
+.text-muted i {
+    width: 1.25rem;
+    text-align: center;
+}
+
+/* Button transitions */
+.btn {
+    transition: all 0.2s ease-in-out;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Status colors */
+.bg-info {
+    background-color: #17a2b8 !important;
+}
+
+.bg-primary {
+    background-color: #007bff !important;
+}
+
+/* Action column layout */
+td .d-flex.flex-column {
+    min-width: 200px;
+} 

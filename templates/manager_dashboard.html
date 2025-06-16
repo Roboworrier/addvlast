@@ -1,0 +1,718 @@
+{% extends "base.html" %}
+
+{% block title %}Manager Dashboard{% endblock %}
+
+{% block head %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.10.24/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.10.24/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.0.1/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.0.1/js/buttons.bootstrap5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.0.1/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.0.1/js/buttons.print.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.0.1/js/buttons.colVis.min.js"></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.10.24/css/dataTables.bootstrap5.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.0.1/css/buttons.bootstrap5.min.css">
+<style>
+    .chart-container {
+        position: relative;
+        height: 420px;
+        width: 100%;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    .card-body {
+        padding: 1rem;
+    }
+    .chart-description {
+        font-size: 1rem;
+        color: #333;
+        margin-bottom: 0.5rem;
+        font-style: italic;
+    }
+    .search-container {
+        margin-bottom: 2rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+    .search-results {
+        margin-top: 1rem;
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <h1 class="mt-4">Manager Dashboard</h1>
+    
+    <!-- Summary Cards -->
+    <div class="row g-4 mb-4">
+        <div class="col-xl-3 col-md-6">
+            <div class="card bg-primary text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="h3 mb-0">{{ total_drawings }}</div>
+                            <div class="small">Total Drawings</div>
+                        </div>
+                        <i class="fas fa-drafting-compass fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="card bg-success text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="h3 mb-0">{{ active_projects }}</div>
+                            <div class="small">Active Projects</div>
+                        </div>
+                        <i class="fas fa-project-diagram fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="card bg-warning text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="h3 mb-0">{{ pending_rework }}</div>
+                            <div class="small">Pending Rework</div>
+                        </div>
+                        <i class="fas fa-tools fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="card bg-info text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="h3 mb-0">{{ completion_rate }}%</div>
+                            <div class="small">Completion Rate</div>
+                        </div>
+                        <i class="fas fa-chart-line fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Charts Row -->
+    <div class="row mb-4">
+        <!-- Project Status Overview -->
+        <div class="col-xl-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="fas fa-chart-bar me-1"></i>
+                    Project Status Overview
+                </div>
+                <div class="card-body">
+                    <div class="chart-description">This bar chart shows the number of projects that are completed, in progress, or pending for each project name.</div>
+                    <div class="chart-container">
+                        <canvas id="projectStatusChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Drawing-SAP Distribution -->
+        <div class="col-xl-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="fas fa-chart-pie me-1"></i>
+                    Drawing Distribution
+                </div>
+                <div class="card-body">
+                    <div class="chart-description">This pie chart shows the distribution of drawings by category (Mechanical, Electrical, Assembly, Others).</div>
+                    <div class="chart-container">
+                        <canvas id="drawingDistributionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Secondary Charts Row -->
+    <div class="row mb-4">
+        <!-- Rework Analysis -->
+        <div class="col-xl-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="fas fa-tools me-1"></i>
+                    Rework Analysis
+                </div>
+                <div class="card-body">
+                    <div class="chart-description">This doughnut chart shows the count of rework items by their status: Approved, Pending, or Rejected.</div>
+                    <div class="chart-container">
+                        <canvas id="reworkAnalysisChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Production Progress -->
+        <div class="col-xl-8">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="fas fa-chart-line me-1"></i>
+                    Production Progress (Last 30 Days)
+                </div>
+                <div class="card-body">
+                    <div class="chart-description">This line chart shows the planned and actual production progress for the last 30 days.</div>
+                    <div class="chart-container">
+                        <canvas id="productionProgressChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Drawing Search -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-search me-1"></i>
+            Drawing Search
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <div class="input-group">
+                        <input type="text" id="sapIdSearch" class="form-control" placeholder="Enter SAP ID">
+                        <button class="btn btn-primary" type="button" onclick="searchSapId()">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div id="searchResults" style="display: none;">
+                <h5>Search Results</h5>
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <tr>
+                            <th>Drawing Number</th>
+                            <td id="result-drawing"></td>
+                            <th>SAP ID</th>
+                            <td id="result-sap"></td>
+                        </tr>
+                        <tr>
+                            <th>Project</th>
+                            <td id="result-project"></td>
+                            <th>End Product</th>
+                            <td id="result-product"></td>
+                        </tr>
+                        <tr>
+                            <th>Planned Quantity</th>
+                            <td id="result-planned"></td>
+                            <th>Completed Quantity</th>
+                            <td id="result-completed"></td>
+                        </tr>
+                        <tr>
+                            <th>Rejected Quantity</th>
+                            <td id="result-rejected"></td>
+                            <th>Rework Quantity</th>
+                            <td id="result-rework"></td>
+                        </tr>
+                        <tr>
+                            <th>Completion</th>
+                            <td id="result-percentage"></td>
+                            <th>Status</th>
+                            <td id="result-status"></td>
+                        </tr>
+                        <tr>
+                            <th>Last Operation</th>
+                            <td colspan="3" id="result-last-op"></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-table me-1"></i>
+            Drawing-SAP Mapping
+        </div>
+        <div class="card-body">
+            <table id="merged-table" class="table table-striped table-bordered">
+                <thead>
+                    <tr>
+                        <th>Drawing Number</th>
+                        <th>SAP ID</th>
+                        <th>Project</th>
+                        <th>End Product</th>
+                        <th>Planned Qty</th>
+                        <th>Completion Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for drawing, end_product, project in merged_data %}
+                    <tr>
+                        <td>{{ drawing.drawing_number }}</td>
+                        <td>{{ drawing.sap_id }}</td>
+                        <td>{{ project.project_name if project else 'N/A' }}</td>
+                        <td>{{ end_product.name if end_product else 'N/A' }}</td>
+                        <td>{{ end_product.quantity if end_product else 'N/A' }}</td>
+                        <td>{{ end_product.completion_date.strftime('%Y-%m-%d') if end_product and end_product.completion_date else 'N/A' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Excel Upload Section -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-file-import me-2"></i>Upload Drawing-SAP Mapping</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('upload_drawing_mapping') }}" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label class="form-label">Upload Drawing-SAP Mapping (.xlsx)</label>
+                    <input class="form-control" type="file" name="drawing_mapping_file" accept=".xlsx" required>
+                    <small class="text-muted">File must contain columns: drawing_number, sap_id</small>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-upload me-2"></i>Upload Mapping
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Rework Approval Section -->
+    <div class="card mb-4">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0"><i class="fas fa-sync-alt me-2"></i>Rework Approvals</h5>
+        </div>
+        <div class="card-body">
+            {% if pending_rework %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Drawing Number</th>
+                                <th>SAP ID</th>
+                                <th>Quantity</th>
+                                <th>Sent to Rework By</th>
+                                <th>Reason</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in pending_rework %}
+                            <tr>
+                                <td>{{ item.drawing_rel.drawing_number if item.drawing_rel else 'N/A' }}</td>
+                                <td>{{ item.drawing_rel.sap_id if item.drawing_rel else 'N/A' }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>{{ item.source_operator_log_rel.operator_id if item.source_operator_log_rel else 'N/A' }}</td>
+                                <td>{{ item.originating_quality_check_rel.rejection_reason }}</td>
+                                <td>
+                                    <span class="badge {% if item.status == 'pending_manager_approval' %}bg-warning{% elif item.status == 'manager_approved' %}bg-success{% else %}bg-danger{% endif %}">
+                                        {{ item.status | replace('_', ' ') | title }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="btn-group">
+                                        <form method="POST" action="{{ url_for('approve_rework', rework_id=item.id) }}" class="me-2">
+                                            <input type="hidden" name="action" value="approve">
+                                            <button type="submit" class="btn btn-success btn-sm">
+                                                <i class="fas fa-check me-1"></i>Approve
+                                            </button>
+                                        </form>
+                                        <button type="button" class="btn btn-danger btn-sm" onclick="showRejectModal('{{ item.id }}')">
+                                            <i class="fas fa-times me-1"></i>Reject
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-center text-muted">No rework items pending approval.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Reject Modal -->
+    <div class="modal fade" id="rejectModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Reject Rework</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="rejectForm" method="post">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="rejection_reason" class="form-label">Reason for Rejection</label>
+                            <textarea class="form-control" id="rejection_reason" name="rejection_reason" required></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-danger" name="action" value="reject">Reject</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    'use strict';
+
+    // Form submission handling
+    document.querySelector('form[action="{{ url_for("upload_drawing_mapping") }}"]').addEventListener('submit', function(e) {
+        const submitButton = this.querySelector('button[type="submit"]');
+        const originalText = submitButton.innerHTML;
+        submitButton.disabled = true;
+        submitButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Uploading...';
+        
+        // Re-enable button after 5 seconds if no response
+        setTimeout(() => {
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalText;
+        }, 5000);
+    });
+
+    // Initialize all charts
+    const initializeCharts = () => {
+        // Project Status Chart
+        const projectStatusChart = new Chart(document.getElementById('projectStatusChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: {{ project_data.project_names|tojson|safe }},
+                datasets: [{
+                    label: 'Completed Projects',
+                    data: {{ project_data.completed_counts|tojson|safe }},
+                    backgroundColor: 'rgba(75, 192, 192, 0.5)'
+                }, {
+                    label: 'Projects In Progress',
+                    data: {{ project_data.in_progress_counts|tojson|safe }},
+                    backgroundColor: 'rgba(255, 206, 86, 0.5)'
+                }, {
+                    label: 'Pending Projects',
+                    data: {{ project_data.pending_counts|tojson|safe }},
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Number of Projects'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Project Name'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            boxWidth: 20,
+                            font: { size: 14 },
+                            color: '#333'
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Project Status Overview',
+                        font: { size: 18 },
+                        color: '#222'
+                    },
+                    tooltip: {
+                        enabled: true,
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.parsed.y}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Drawing Distribution Chart
+        const drawingDistributionChart = new Chart(document.getElementById('drawingDistributionChart').getContext('2d'), {
+            type: 'pie',
+            data: {
+                labels: {{ drawing_categories|tojson|safe }},
+                datasets: [{
+                    label: 'Drawing Count by Category',
+                    data: {{ drawing_counts|tojson|safe }},
+                    backgroundColor: [
+                        'rgba(75, 192, 192, 0.5)',
+                        'rgba(255, 206, 86, 0.5)',
+                        'rgba(255, 99, 132, 0.5)',
+                        'rgba(54, 162, 235, 0.5)'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            boxWidth: 20,
+                            font: { size: 14 },
+                            color: '#333'
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Drawing Distribution by Category',
+                        font: { size: 18 },
+                        color: '#222'
+                    },
+                    tooltip: {
+                        enabled: true,
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.label}: ${context.parsed}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Rework Analysis Chart
+        const reworkAnalysisChart = new Chart(document.getElementById('reworkAnalysisChart').getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Approved', 'Pending', 'Rejected'],
+                datasets: [{
+                    label: 'Rework Item Count',
+                    data: [
+                        {{ rework_data.approved_count }},
+                        {{ rework_data.pending_count }},
+                        {{ rework_data.rejected_count }}
+                    ],
+                    backgroundColor: [
+                        'rgba(75, 192, 192, 0.5)',
+                        'rgba(255, 206, 86, 0.5)',
+                        'rgba(255, 99, 132, 0.5)'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            boxWidth: 20,
+                            font: { size: 14 },
+                            color: '#333'
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Rework Analysis',
+                        font: { size: 18 },
+                        color: '#222'
+                    },
+                    tooltip: {
+                        enabled: true,
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.label}: ${context.parsed}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Production Progress Chart
+        const productionProgressChart = new Chart(document.getElementById('productionProgressChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: {{ timeline|tojson|safe }},
+                datasets: [
+                    {
+                        label: 'Target Production',
+                        data: {{ target_production|tojson|safe }},
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                        fill: true,
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Actual Production',
+                        data: {{ actual_production|tojson|safe }},
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                        fill: true,
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Production Quantity'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            boxWidth: 20,
+                            font: { size: 14 },
+                            color: '#333'
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Production Progress (Last 30 Days)',
+                        font: { size: 18 },
+                        color: '#222'
+                    },
+                    tooltip: {
+                        enabled: true,
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.parsed.y}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        return { projectStatusChart, drawingDistributionChart, reworkAnalysisChart, productionProgressChart };
+    };
+
+    // Initialize DataTables
+    const initializeDataTable = () => {
+        $('#merged-table').DataTable({
+            order: [[0, 'asc']],
+            pageLength: 25,
+            dom: 'Bfrtip',
+            buttons: ['copy', 'csv', 'excel', 'pdf', 'print'],
+            responsive: true,
+            language: {
+                search: "Search:",
+                lengthMenu: "Show _MENU_ entries",
+                info: "Showing _START_ to _END_ of _TOTAL_ entries",
+                paginate: {
+                    first: "First",
+                    last: "Last",
+                    next: "Next",
+                    previous: "Previous"
+                }
+            }
+        });
+    };
+
+    // SAP ID Search functionality
+    const searchSapId = () => {
+        const sapId = document.getElementById('sapIdSearch').value.trim();
+        if (!sapId) {
+            alert('Please enter a SAP ID');
+            return;
+        }
+
+        fetch(`/api/search_drawing/${sapId}`)
+            .then(response => response.json())
+            .then(data => {
+                const results = document.getElementById('searchResults');
+                if (data.exists) {
+                    results.style.display = 'block';
+                    document.getElementById('result-drawing').textContent = data.drawing_number;
+                    document.getElementById('result-sap').textContent = data.sap_id;
+                    document.getElementById('result-project').textContent = data.project_name;
+                    document.getElementById('result-product').textContent = data.end_product;
+                    document.getElementById('result-planned').textContent = data.planned_quantity;
+                    document.getElementById('result-completed').textContent = data.completed_quantity;
+                    document.getElementById('result-rejected').textContent = data.rejected_quantity;
+                    document.getElementById('result-rework').textContent = data.rework_quantity;
+                    document.getElementById('result-percentage').textContent = data.completion_percentage + '%';
+                    document.getElementById('result-status').textContent = data.status;
+                    
+                    const lastOp = data.last_operation;
+                    const lastOpText = lastOp ? 
+                        `Operator: ${lastOp.operator}, Machine: ${lastOp.machine}, Status: ${lastOp.status}, Time: ${lastOp.timestamp}` :
+                        'No operations recorded';
+                    document.getElementById('result-last-op').textContent = lastOpText;
+                } else {
+                    results.style.display = 'none';
+                    alert('No drawing found with this SAP ID');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error searching for SAP ID');
+            });
+    };
+
+    const showRejectModal = (reworkId) => {
+        const form = document.getElementById('rejectForm');
+        form.action = `/manager/approve_rework/${reworkId}`;
+        const modal = new bootstrap.Modal(document.getElementById('rejectModal'));
+        modal.show();
+    };
+
+    // Initialize everything when document is ready
+    $(document).ready(() => {
+        initializeCharts();
+        initializeDataTable();
+        
+        // Add keyboard event listener for search
+        document.getElementById('sapIdSearch').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                searchSapId();
+            }
+        });
+    });
+</script>
+{% endblock %}

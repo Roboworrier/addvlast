@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="140" height="40" viewBox="0 0 140 40" xmlns="http://www.w3.org/2000/svg">
+    <style>
+        .text-red { fill: #FF0000; }
+        .text-blue { fill: #0066CC; }
+    </style>
+    <text x="5" y="20" class="text-red" font-family="Arial" font-size="18" font-weight="bold">ADDVERB</text>
+    <text x="5" y="32" class="text-blue" font-family="Arial" font-size="8">Human | Robot | Possibilities</text>
+</svg> 

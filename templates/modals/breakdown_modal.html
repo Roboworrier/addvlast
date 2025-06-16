@@ -1,0 +1,26 @@
+<div class="modal fade" id="breakdownModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Report Machine Breakdown</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('update_machine_status') }}" method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="machine_id" value="{{ machine.id }}">
+                    <input type="hidden" name="status" value="breakdown">
+                    <input type="hidden" name="operator_name" value="{{ operator_name }}">
+                    <div class="mb-3">
+                        <label for="reason" class="form-label">Breakdown Reason</label>
+                        <textarea class="form-control" name="reason" required rows="3" 
+                                placeholder="Please describe the issue..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Report Breakdown</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
