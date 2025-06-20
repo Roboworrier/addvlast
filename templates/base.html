@@ -530,6 +530,9 @@
     <a href="{{ url_for('live_dpr') }}" class="list-group-item list-group-item-action bg-dark text-white">
         <i class="fas fa-chart-line me-2"></i>Live DPR
     </a>
+    <a href="{{ url_for('part_finder') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-search me-2"></i>Part Finder
+    </a>
 {% elif session.get('active_role') == 'manager' %}
     <a href="{{ url_for('manager_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
         <i class="fas fa-tachometer-alt me-2"></i>Dashboard
@@ -540,18 +543,23 @@
     <a href="{{ url_for('live_dpr') }}" class="list-group-item list-group-item-action bg-dark text-white">
         <i class="fas fa-chart-line me-2"></i>Live DPR
     </a>
+    <a href="{{ url_for('digital_twin_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-cube me-2"></i>Digital Twin
+    </a>
+    <a href="{{ url_for('part_finder') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-search me-2"></i>Part Finder
+    </a>
 {% elif session.get('active_role') == 'quality' %}
     <a href="{{ url_for('quality_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
         <i class="fas fa-tachometer-alt me-2"></i>Dashboard
     </a>
 {% elif session.get('active_role') == 'operator' %}
-    {% if session.get('machine_name') == 'Leadwell-1' %}
-    <a href="{{ url_for('operator_panel_leadwell1') }}" class="list-group-item list-group-item-action bg-dark text-white">
+    {% if session.get('machine_name') %}
+    <a href="{{ url_for('operator_panel', machine_name=session.get('machine_name')) }}" class="list-group-item list-group-item-action bg-dark text-white">
         <i class="fas fa-tachometer-alt me-2"></i>Dashboard
     </a>
-    {% elif session.get('machine_name') == 'Leadwell-2' %}
-    <a href="{{ url_for('operator_panel_leadwell2') }}" class="list-group-item list-group-item-action bg-dark text-white">
-        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    <a href="{{ url_for('live_routes.operator_shipping', machine_name=session.get('machine_name')) }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-shipping-fast me-2"></i>Ship Parts
     </a>
     {% endif %}
 {% elif session.get('active_role') == 'plant_head' %}
@@ -563,6 +571,12 @@
     </a>
     <a href="{{ url_for('live_dpr') }}" class="list-group-item list-group-item-action bg-dark text-white">
         <i class="fas fa-chart-line me-2"></i>Live DPR
+    </a>
+    <a href="{{ url_for('digital_twin_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-cube me-2"></i>Digital Twin
+    </a>
+    <a href="{{ url_for('part_finder') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-search me-2"></i>Part Finder
     </a>
 {% elif session.get('active_role') == 'admin' %}
     <a href="{{ url_for('admin_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
@@ -628,6 +642,9 @@
     
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Vue.js -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
 
     <!-- Custom Scripts -->
     <script>

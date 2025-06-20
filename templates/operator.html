@@ -348,4 +348,219 @@
         </div>
     </div>
 </div>
+
+<!-- Update the transfer section -->
+<div class="transfer-section" v-if="currentJob">
+    <div class="card">
+        <div class="card-header">
+            <h4>Transfer Parts</h4>
+        </div>
+        <div class="card-body">
+            <div class="current-progress">
+                <p>SAP ID: {{ currentJob.sap_id }}</p>
+                <p>Total Quantity: {{ currentJob.total_quantity }}</p>
+                <p>Completed: {{ currentJob.completed_quantity }}</p>
+                <p>Assigned Machine: <strong>{{ currentJob.assigned_machine }}</strong></p>
+                <p v-if="nextOperation">Next Operation: <strong>{{ nextOperation.assigned_machine }}</strong></p>
+            </div>
+            
+            <!-- Show warning if wrong machine -->
+            <div class="alert alert-danger" v-if="currentJob.assigned_machine !== currentMachine">
+                Warning: You are working on {{ currentMachine }}. 
+                This job is assigned to {{ currentJob.assigned_machine }}.
+                Parts processed here will be rejected.
+            </div>
+            
+            <div class="transfer-form" v-if="canTransfer">
+                <div class="form-group">
+                    <label>Quantity to Transfer</label>
+                    <input type="number" v-model="transferQuantity" 
+                           :max="currentJob.completed_quantity" 
+                           class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Next Machine</label>
+                    <input type="text" :value="nextOperation ? nextOperation.assigned_machine : 'No next operation'" 
+                           disabled class="form-control">
+                </div>
+                <button @click="requestTransfer" 
+                        :disabled="!isValidTransfer || currentJob.assigned_machine !== currentMachine" 
+                        class="btn btn-primary">
+                    Request Transfer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Update the incoming transfers section -->
+<div class="incoming-transfers" v-if="hasIncomingTransfers">
+    <div class="card">
+        <div class="card-header">
+            <h4>Incoming Parts</h4>
+        </div>
+        <div class="card-body">
+            <div v-for="transfer in incomingTransfers" 
+                 :key="transfer.id" 
+                 class="transfer-item">
+                <div class="transfer-details">
+                    <p>SAP ID: {{ transfer.sap_id }}</p>
+                    <p>Quantity: {{ transfer.quantity }}</p>
+                    <p>From: {{ transfer.from_machine }}</p>
+                    <p>To: <strong>{{ transfer.to_machine }}</strong></p>
+                    <p>Status: {{ transfer.status }}</p>
+                </div>
+                <!-- Only show accept button if transfer is for this machine -->
+                <div class="transfer-actions" 
+                     v-if="transfer.status === 'LPI_PASSED' && transfer.to_machine === currentMachine">
+                    <button @click="acceptTransfer(transfer.id)" 
+                            class="btn btn-success">
+                        Accept Parts
+                    </button>
+                </div>
+                <!-- Show warning if wrong machine -->
+                <div class="alert alert-warning" 
+                     v-if="transfer.status === 'LPI_PASSED' && transfer.to_machine !== currentMachine">
+                    These parts must be received by {{ transfer.to_machine }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add this near your existing scripts -->
+<script>
+// Add to your existing Vue instance
+if (app) {
+    // Add new data properties
+    app.data.transferQuantity = 0;
+    app.data.incomingTransfers = [];
+    app.data.nextOperation = null;
+    
+    // Add computed properties
+    app.computed.canTransfer = function() {
+        return this.currentJob && 
+               this.currentJob.completed_quantity > 0 &&
+               this.nextOperation;
+    };
+    
+    app.computed.isValidTransfer = function() {
+        return this.transferQuantity > 0 && 
+               this.transferQuantity <= this.currentJob.completed_quantity &&
+               this.currentJob.assigned_machine === this.currentMachine;
+    };
+    
+    app.computed.hasIncomingTransfers = function() {
+        return this.incomingTransfers.length > 0;
+    };
+    
+    // Add methods
+    app.methods.requestTransfer = async function() {
+        if (this.currentJob.assigned_machine !== this.currentMachine) {
+            alert('You cannot transfer parts from an unauthorized machine');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/transfer-request', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    sap_id: this.currentJob.sap_id,
+                    quantity: this.transferQuantity,
+                    from_machine: this.currentMachine,
+                    route_operation_id: this.currentJob.operation_id
+                })
+            });
+            
+            const result = await response.json();
+            if (result.status === 'success') {
+                this.transferQuantity = 0;
+                alert('Transfer request created successfully');
+            } else {
+                alert(result.message || 'Error creating transfer request');
+            }
+        } catch (error) {
+            alert('Error creating transfer request: ' + error.message);
+        }
+    };
+    
+    app.methods.acceptTransfer = async function(transferId) {
+        try {
+            const response = await fetch('/api/accept-transfer', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    transfer_id: transferId,
+                    machine_id: this.currentMachine
+                })
+            });
+            
+            const result = await response.json();
+            if (result.status === 'success') {
+                this.loadIncomingTransfers();
+            } else {
+                alert(result.message || 'Error accepting transfer');
+            }
+        } catch (error) {
+            alert('Error accepting transfer: ' + error.message);
+        }
+    };
+    
+    app.methods.loadIncomingTransfers = async function() {
+        try {
+            const response = await fetch('/api/incoming-transfers/' + this.currentMachine);
+            const data = await response.json();
+            this.incomingTransfers = data.transfers;
+        } catch (error) {
+            console.error('Error loading transfers:', error);
+        }
+    };
+    
+    // Add to your existing socket listeners
+    socket.on('transfer_update', function(data) {
+        if (app.currentMachine === data.to_machine) {
+            app.loadIncomingTransfers();
+        }
+    });
+    
+    // Add to your mounted function
+    const originalMounted = app.mounted;
+    app.mounted = function() {
+        if (originalMounted) originalMounted.call(this);
+        this.loadIncomingTransfers();
+    };
+}
+</script>
+
+<style>
+.transfer-section, .incoming-transfers {
+    margin-top: 20px;
+}
+
+.transfer-item {
+    border: 1px solid #ddd;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+}
+
+.transfer-details {
+    margin-bottom: 10px;
+}
+
+.transfer-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.alert {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+</style>
 {% endblock %}

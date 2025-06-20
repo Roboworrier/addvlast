@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}{{ machine.name }} - Ship Parts{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ 'warning' if 'lpi' in message|lower else category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <h1 class="mt-4">{{ machine.name }} - Ship Parts</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a href="{{ url_for('operator_panel', machine_name=machine.name) }}">Operator Panel</a></li>
+        <li class="breadcrumb-item active">Ship Parts</li>
+    </ol>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card mb-3">
+                <div class="card-header bg-info text-white">
+                    <i class="fas fa-vial me-1"></i> Call for FPI (First Piece Inspection)
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('submit_quality_check') }}" id="callFpiForm">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label class="form-label">Drawing</label>
+                                <select class="form-select" name="drawing_number" id="fpiDrawingSelect" required>
+                                    <option value="">Select Drawing</option>
+                                    {% for assignment in assignment_rows %}
+                                        <option value="{{ assignment['drawing_number'] }}">{{ assignment['drawing_number'] }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Batch</label>
+                                <select class="form-select" name="batch_id" id="fpiBatchSelect" required>
+                                    <option value="">Select Batch</option>
+                                    <!-- Batch options will be populated by JS for batches not passed FPI -->
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Batch Quantity</label>
+                                <input type="number" class="form-control" name="batch_quantity" id="fpiBatchQuantityInput" min="1" required readonly>
+                            </div>
+                            <input type="hidden" name="check_type" value="fpi">
+                            <div class="col-12 mt-2">
+                                <button type="submit" class="btn btn-info float-end">
+                                    <i class="fas fa-vial me-1"></i> Call for FPI
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <i class="fas fa-shipping-fast me-1"></i> Ship Parts
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('live_routes.ship_parts') }}">
+                        <input type="hidden" name="machine_name" value="{{ machine.name }}">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <label class="form-label">Select Drawing</label>
+                                    <select class="form-select" name="drawing_number" id="drawingSelect" required>
+                                        <option value="">Select Drawing</option>
+                                        {% for assignment in assignment_rows %}
+                                            <option value="{{ assignment['drawing_number'] }}">
+                                                {{ assignment['drawing_number'] }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <label class="form-label">Select Batch</label>
+                                    <select class="form-select" name="batch_id" id="batchSelect" required>
+                                        <option value="">Select Batch</option>
+                                        <!-- Batch options will be populated by JS -->
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <label class="form-label">Quantity to Ship</label>
+                                    <input type="number" class="form-control" name="ship_quantity" id="shipQuantityInput" min="1" required>
+                                    <input type="hidden" name="batch_quantity" id="batchQuantityInput">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <label class="form-label">Ship To Machine</label>
+                                    <select class="form-select" name="destination_machine" required>
+                                        <option value="">Select Machine</option>
+                                        {% for machine in available_machines %}
+                                            <option value="{{ machine.name }}">{{ machine.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="mb-3">
+                                    <label class="form-label">Notes (Optional)</label>
+                                    <input type="text" class="form-control" name="shipping_notes" placeholder="Any special instructions">
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-success float-end">
+                                    <i class="fas fa-shipping-fast me-1"></i> Ship Parts
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shipping History -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-history me-1"></i> Shipping History
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Drawing Number</th>
+                                    <th>Quantity Shipped</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if shipping_history %}
+                                    {% for record in shipping_history %}
+                                        <tr>
+                                            <td>{{ record.drawing_number }}</td>
+                                            <td>{{ record.quantity }}</td>
+                                            <td>{{ record.shipped_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="3" class="text-center">No shipping history available</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+// Example: You would fetch batch data from the backend via AJAX in a real app
+// For now, simulate with dummy data or extend backend to provide batch info per drawing
+const batchData = {
+    // 'drawing_number': [{batch_id, available_quantity, lpi_status}, ...]
+};
+const drawingSelect = document.getElementById('drawingSelect');
+const batchSelect = document.getElementById('batchSelect');
+const shipQuantityInput = document.getElementById('shipQuantityInput');
+const batchQuantityInput = document.getElementById('batchQuantityInput');
+if (drawingSelect && batchSelect) {
+    drawingSelect.addEventListener('change', function() {
+        const drawing = this.value;
+        batchSelect.innerHTML = '<option value="">Select Batch</option>';
+        if (batchData[drawing]) {
+            batchData[drawing].forEach(batch => {
+                if (batch.lpi_status && batch.lpi_status.toLowerCase() === 'passed') {
+                    batchSelect.innerHTML += `<option value="${batch.batch_id}">Batch ${batch.batch_id} (Available: ${batch.available_quantity})</option>`;
+                }
+            });
+        }
+    });
+    batchSelect.addEventListener('change', function() {
+        const selected = this.options[this.selectedIndex];
+        const qty = selected.getAttribute('data-qty');
+        shipQuantityInput.max = qty;
+        batchQuantityInput.value = qty;
+    });
+}
+</script>
+{% endblock %} 

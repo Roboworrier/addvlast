@@ -1,0 +1,10 @@
+Date (UTC),Machine,Operator,Project,SAP ID,Drawing No,Setup Start (UTC),Setup End (UTC),First Cycle Start (UTC),Last Cycle End (UTC),Assigned Qty,Completed Qty,Passed Qty,Rejected Qty,Rework Qty,Std. Setup (min),Actual Setup (min),Std. Cycle (min),Actual Cycle (min),Total Cycle (min),FPI Status,LPI Status,Status,Availability (%),Performance (%),Quality (%),OEE (%)
+2025-06-19,Leadwell-2,zxcvb,PROJ0514,6925700,34538,17:39:17,17:39:20,,,,,,,,,0.05227355,,,,Pending,,cycle_completed,,,,
+2025-06-19,AMS VMC-3,ravi,PROJ0514,6964700,34523,14:54:59,14:55:00,,,,1,1,,,,0.02041485,,,,pass,,fpi_passed_ready_for_cycle,,,,
+2025-06-19,AMS VMC-3,ravi,PROJ0514,6964700,34523,14:52:49,14:52:50,,,,,,,,,0.01807073333333333,,,,Pending,,cycle_completed,,,,
+2025-06-19,AMS VMC-3,ravi,PROJ0514,6964700,34523,13:19:24,13:19:25,,,,,,,,,0.0154513,,,,Pending,,admin_closed,,,,
+2025-06-19,AMS VMC-3,ravi,PROJ0514,6964700,34523,13:19:30,13:19:30,,,,,,,,,0.009907283333333333,,,,Pending,,admin_closed,,,,
+2025-06-19,Leadwell-2,ravi,PROJ0514,6925700,34538,09:24:11,09:24:13,,,,,,,,,0.03563345,,,,Pending,,admin_closed,,,,
+2025-06-19,Leadwell-2,ravi,PROJ0514,6925700,34538,09:24:17,09:24:19,,,,,,,,,0.023495449999999998,,,,Pending,,admin_closed,,,,
+2025-06-19,Leadwell-2,ravi,PROJ0514,6925700,34538,09:24:23,09:24:24,,,,,,,,,0.022656566666666666,,,,Pending,,admin_closed,,,,
+2025-06-19,Leadwell-2,ravi,PROJ0514,6925700,34538,09:24:47,09:24:48,,,,,,,,,0.020205266666666666,,,,Pending,,admin_closed,,,,

@@ -1,0 +1,462 @@
+{% extends "base.html" %}
+
+{% block title %}Part Finder - ChipSight{% endblock %}
+
+{% block head %}
+<style>
+body {
+    background: #f0f6ff;
+}
+.container-fluid {
+    background: #f8fbff;
+    border-radius: 18px;
+    box-shadow: 0 6px 32px rgba(0,0,0,0.08);
+    padding: 32px 24px 24px 24px;
+    margin-top: 24px;
+}
+.card {
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
+.card-header {
+    background: linear-gradient(90deg, #007bff 0%, #00c6ff 100%);
+    color: #fff !important;
+    font-weight: 600;
+    border-radius: 16px 16px 0 0;
+    font-size: 1.1rem;
+}
+.journey-map {
+    position: relative;
+    padding: 40px 0 60px 0;
+    background: #eaf4ff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.journey-road {
+    height: 12px;
+    background: linear-gradient(90deg, #b6e0fe 0%, #e0e0e0 100%);
+    position: relative;
+    margin: 60px 0 40px 0;
+    border-radius: 6px;
+    min-height: 60px;
+}
+.checkpoint {
+    position: absolute;
+    top: -45px;
+    transform: translateX(-50%);
+    transition: box-shadow 0.2s, transform 0.2s;
+}
+.checkpoint:hover {
+    z-index: 10;
+    box-shadow: 0 8px 32px rgba(0,123,255,0.18);
+    transform: translateX(-50%) scale(1.08);
+}
+.checkpoint-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #e3f0ff 0%, #f8fbff 100%);
+    border: 4px solid;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+    font-size: 32px;
+    position: relative;
+    transition: border-color 0.2s, color 0.2s;
+}
+.checkpoint-label {
+    position: absolute;
+    width: 220px;
+    text-align: center;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 90px;
+    font-weight: 700;
+    font-size: 1.1rem;
+    letter-spacing: 0.5px;
+}
+.checkpoint-details {
+    position: absolute;
+    width: 220px;
+    text-align: center;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 120px;
+    font-size: 0.97rem;
+    color: #444;
+    background: #f8fbff;
+    border-radius: 8px;
+    padding: 8px 0 4px 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.part-stats {
+    background: #eaf4ff;
+    border-radius: 12px;
+    padding: 24px 20px 20px 20px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 8px rgba(0,123,255,0.06);
+    border: 2px solid #b6e0fe;
+}
+.stat-card {
+    background: white;
+    border-radius: 10px;
+    padding: 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    height: 100%;
+    border-left: 5px solid #007bff;
+}
+.stat-card .title {
+    color: #007bff;
+    font-size: 1rem;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+.stat-card .value {
+    font-size: 1.7rem;
+    font-weight: 700;
+    color: #222;
+}
+.qc-timeline {
+    position: relative;
+    padding: 20px 0;
+}
+.qc-item {
+    padding: 18px;
+    border-left: 4px solid;
+    margin-bottom: 18px;
+    background: #f8fbff;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0,123,255,0.06);
+}
+.qc-item.passed {
+    border-left-color: #28a745;
+}
+.qc-item.failed {
+    border-left-color: #dc3545;
+}
+.qc-item.pending {
+    border-left-color: #ffc107;
+}
+/* Progress bar styling */
+.journey-road > div[style*='background: #28a745'] {
+    background: linear-gradient(90deg, #28a745 0%, #00c6ff 100%) !important;
+    box-shadow: 0 2px 12px rgba(40,167,69,0.12);
+    height: 12px !important;
+    border-radius: 6px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <h1 class="mt-4">Part Finder</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item active">Track Parts & Production Status</li>
+    </ol>
+
+    <!-- Search Form -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form id="searchForm" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">Search by SAP ID or Drawing Number</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="searchInput" placeholder="Enter SAP ID or Drawing Number">
+                        <button class="btn btn-primary" type="submit">
+                            <i class="fas fa-search me-1"></i> Search
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Part Information -->
+    <div id="partInfo" style="display: none;">
+        <!-- Part Stats -->
+        <div class="part-stats">
+            <div class="row g-4">
+                <div class="col-md-3">
+                    <div class="stat-card">
+                        <div class="title">SAP ID</div>
+                        <div class="value" id="sapId">-</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card">
+                        <div class="title">Drawing Number</div>
+                        <div class="value" id="drawingNumber">-</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card">
+                        <div class="title">Total Quantity</div>
+                        <div class="value" id="totalQuantity">-</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card">
+                        <div class="title">Completed</div>
+                        <div class="value" id="completedQuantity">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Journey Map -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="fas fa-route me-1"></i> Production Journey
+            </div>
+            <div class="card-body">
+                <div class="journey-map">
+                    <div class="journey-road" id="journeyRoad">
+                        <!-- Checkpoints will be added here dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quality Control History -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="fas fa-clipboard-check me-1"></i> Quality Control History
+            </div>
+            <div class="card-body">
+                <div class="qc-timeline" id="qcTimeline">
+                    <!-- QC items will be added here dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script>
+const socket = io();
+
+// Listen for real-time part finder updates
+socket.on('part_finder_update', function(data) {
+    const currentSapId = document.getElementById('sapId').textContent;
+    const currentDrawing = document.getElementById('drawingNumber').textContent;
+    if (data && (data.sap_id === currentSapId || data.drawing_number === currentDrawing)) {
+        // Re-fetch and refresh the part info
+        if (currentSapId && currentSapId !== '-') {
+            fetch(`/live/api/part-finder/search?query=${encodeURIComponent(currentSapId)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' && data.part) {
+                        displayPartInfo(data.part);
+                    }
+                });
+        }
+    }
+});
+
+document.getElementById('searchForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const query = document.getElementById('searchInput').value.trim();
+    if (!query) return;
+
+    fetch(`/live/api/part-finder/search?query=${encodeURIComponent(query)}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success' && data.part) {
+                displayPartInfo(data.part);
+            } else {
+                alert('Part not found');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error searching for part');
+        });
+});
+
+function displayPartInfo(part) {
+    document.getElementById('partInfo').style.display = 'block';
+    document.getElementById('sapId').textContent = part.sap_id;
+    document.getElementById('drawingNumber').textContent = part.drawing_number;
+    let totalQuantity = part.total_quantity || 0;
+    let completedQuantity = part.completed_quantity || 0;
+    document.getElementById('totalQuantity').textContent = totalQuantity;
+    document.getElementById('completedQuantity').textContent = completedQuantity;
+
+    // Build journey map for checkpoints (operations)
+    const journeyRoad = document.getElementById('journeyRoad');
+    journeyRoad.innerHTML = '';
+    let progressPercent = 0;
+    if (part.checkpoints && part.checkpoints.length > 0) {
+        // Calculate progress: percent of checkpoints completed
+        const completedSteps = part.checkpoints.filter(cp => cp.status === 'COMPLETED').length;
+        progressPercent = Math.round((completedSteps / part.checkpoints.length) * 100);
+        // Add progress bar under the journey road
+        let progressBar = document.createElement('div');
+        progressBar.style.position = 'absolute';
+        progressBar.style.height = '8px';
+        progressBar.style.background = '#28a745';
+        progressBar.style.left = '0';
+        progressBar.style.top = '0';
+        progressBar.style.width = progressPercent + '%';
+        progressBar.style.zIndex = '1';
+        progressBar.style.borderRadius = '4px';
+        journeyRoad.appendChild(progressBar);
+        // Render checkpoints
+        part.checkpoints.forEach((cp, index) => {
+            const position = (index / (part.checkpoints.length - 1 || 1)) * 100;
+            const checkpoint = document.createElement('div');
+            checkpoint.className = `checkpoint ${getStatusClass((cp.status||'').toUpperCase())}`;
+            checkpoint.style.left = `${position}%`;
+            checkpoint.style.zIndex = '2';
+            checkpoint.style.cursor = 'pointer';
+            checkpoint.innerHTML = `
+                <div class="checkpoint-icon" style="width: 48px; height: 48px; font-size: 20px; background: white; border: 3px solid ${getStatusColor((cp.status||'').toUpperCase())}; color: ${getStatusColor((cp.status||'').toUpperCase())}; box-shadow: 0 2px 8px rgba(0,0,0,0.15); position: relative;">
+                    ${getOperationIcon(cp.machine_name)}
+                    ${cp.transfer ? '<span style="position:absolute;top:-8px;right:-8px;background:#17a2b8;color:#fff;border-radius:50%;padding:2px 6px;font-size:12px;">T</span>' : ''}
+                    ${cp.rework ? '<span style="position:absolute;top:-8px;left:-8px;background:#ffc107;color:#fff;border-radius:50%;padding:2px 6px;font-size:12px;">R</span>' : ''}
+                </div>
+                <div class="checkpoint-label" style="color: ${getStatusColor((cp.status||'').toUpperCase())}; font-weight: bold; font-size: 0.95rem;">${cp.machine_name || cp.operation_type.replace(/_/g, ' ')}</div>
+                <div class="checkpoint-details" style="font-size:0.85rem;">
+                    Operation: ${cp.operation_type.replace(/_/g, ' ')}<br>
+                    Completed: ${cp.completed_quantity}<br>
+                    In Progress: ${cp.in_progress_quantity}<br>
+                    FPI: ${cp.fpi_status || 'Pending'}<br>
+                    LPI: ${cp.lpi_status || 'Pending'}
+                </div>
+            `;
+            checkpoint.onmouseenter = function(e) {
+                showCheckpointPopup(cp, checkpoint);
+            };
+            checkpoint.onmouseleave = function(e) {
+                hideBatchPopup();
+            };
+            journeyRoad.appendChild(checkpoint);
+        });
+    }
+
+    // Build QC timeline for all quality checks
+    const qcTimeline = document.getElementById('qcTimeline');
+    qcTimeline.innerHTML = '';
+    if (part.qc_info && part.qc_info.length > 0) {
+        part.qc_info.forEach(qc => {
+            const qcItem = document.createElement('div');
+            qcItem.className = `qc-item ${qc.result && qc.result.toLowerCase()}`;
+            qcItem.innerHTML = `
+                <div class="d-flex justify-content-between">
+                    <strong>${qc.check_type.toUpperCase()}</strong>
+                    <span>${new Date(qc.date).toLocaleDateString()}</span>
+                </div>
+                <div>Inspector: ${qc.inspector}</div>
+                <div>Result: ${qc.result}</div>
+                <div>Remarks: ${qc.remarks || ''}</div>
+            `;
+            qcTimeline.appendChild(qcItem);
+        });
+    } else {
+        qcTimeline.innerHTML = '<div class="text-muted">No quality control records found.</div>';
+    }
+}
+
+// Popup for checkpoint details
+function showCheckpointPopup(cp, anchor) {
+    hideBatchPopup();
+    batchPopup = document.createElement('div');
+    batchPopup.style.position = 'absolute';
+    batchPopup.style.background = '#fff';
+    batchPopup.style.border = '2px solid #007bff';
+    batchPopup.style.borderRadius = '12px';
+    batchPopup.style.padding = '20px';
+    batchPopup.style.boxShadow = '0 4px 24px rgba(0,0,0,0.25)';
+    batchPopup.style.zIndex = 9999;
+    batchPopup.style.minWidth = '320px';
+    batchPopup.innerHTML = `
+        <strong>Operation: ${cp.operation_type.replace(/_/g, ' ')}</strong><br>
+        Machine: ${cp.machine_name || '-'}<br>
+        Completed: ${cp.completed_quantity}<br>
+        In Progress: ${cp.in_progress_quantity}<br>
+        FPI: ${cp.fpi_status || 'Pending'}<br>
+        LPI: ${cp.lpi_status || 'Pending'}<br>
+    `;
+    document.body.appendChild(batchPopup);
+    const rect = anchor.getBoundingClientRect();
+    batchPopup.style.left = (rect.left + window.scrollX + rect.width/2) + 'px';
+    batchPopup.style.top = (rect.top + window.scrollY - batchPopup.offsetHeight - 10) + 'px';
+}
+
+// Hover popup for batch details
+let batchPopup = null;
+function hideBatchPopup() {
+    if (batchPopup) {
+        batchPopup.remove();
+        batchPopup = null;
+    }
+}
+
+function getStatusClass(status) {
+    if (!status) return 'pending';
+    switch (status.toUpperCase()) {
+        case 'COMPLETED': return 'completed';
+        case 'IN_PROGRESS': return 'in-progress';
+        case 'FAILED': return 'failed';
+        case 'REWORK': return 'rework';
+        case 'TRANSFERRED': return 'transferred';
+        default: return 'pending';
+    }
+}
+
+function getOperationIcon(machine) {
+    // You can map machine names to icons as needed
+    return '<i class="fas fa-industry"></i>';
+}
+
+function getStatusColor(status) {
+    if (!status) return '#6c757d';
+    switch (status.toUpperCase()) {
+        case 'COMPLETED': return '#28a745';
+        case 'IN_PROGRESS': return '#ffc107';
+        case 'FAILED': return '#dc3545';
+        case 'REWORK': return '#ffc107';
+        case 'TRANSFERRED': return '#17a2b8';
+        default: return '#6c757d';
+    }
+}
+
+// In-app notification UI (if not present)
+if (!document.getElementById('notificationArea')) {
+    const notifArea = document.createElement('div');
+    notifArea.id = 'notificationArea';
+    notifArea.style.position = 'fixed';
+    notifArea.style.top = '24px';
+    notifArea.style.right = '24px';
+    notifArea.style.zIndex = '9999';
+    notifArea.style.maxWidth = '320px';
+    document.body.appendChild(notifArea);
+    socket.on('notify_operator', function(data) {
+        showNotification(data.type + ': ' + (data.drawing || '') + (data.result ? ' - ' + data.result : ''));
+    });
+    socket.on('notify_transfer', function(data) {
+        showNotification('Transfer: ' + data.drawing + ' from ' + data.from + ' to ' + data.to + ' (' + data.quantity + ')');
+    });
+    socket.on('notify_quality', function(data) {
+        showNotification('Quality: ' + data.type + ' for ' + data.drawing + ' on ' + data.machine);
+    });
+    socket.on('notify_manager', function(data) {
+        showNotification('Manager: ' + data.type + ' for ' + data.drawing);
+    });
+}
+function showNotification(msg) {
+    const notif = document.createElement('div');
+    notif.style.background = '#007bff';
+    notif.style.color = '#fff';
+    notif.style.padding = '12px 18px';
+    notif.style.marginBottom = '12px';
+    notif.style.borderRadius = '8px';
+    notif.style.boxShadow = '0 2px 8px rgba(0,0,0,0.12)';
+    notif.style.fontWeight = 'bold';
+    notif.textContent = msg;
+    document.getElementById('notificationArea').appendChild(notif);
+    setTimeout(() => notif.remove(), 5000);
+}
+</script>
+{% endblock %} 

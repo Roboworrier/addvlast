@@ -1,0 +1,1 @@
+Date (UTC),Machine,Operator,Project,SAP ID,Drawing No,Setup Start (UTC),Setup End (UTC),First Cycle Start (UTC),Last Cycle End (UTC),Assigned Qty,Completed Qty,Passed Qty,Rejected Qty,Rework Qty,Std. Setup (min),Actual Setup (min),Std. Cycle (min),Actual Cycle (min),Total Cycle (min),FPI Status,LPI Status,Status,Availability (%),Performance (%),Quality (%),OEE (%)

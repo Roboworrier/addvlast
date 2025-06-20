@@ -1,0 +1,450 @@
+{% extends "base.html" %}
+
+{% block title %}{{ machine.name }} Operator Panel - ChipSight{% endblock %}
+
+{% block head %}
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <h1 class="mt-4">{{ machine.name }} - Operator Panel</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item active">Machine Control</li>
+    </ol>
+
+    <!-- Machine Stats -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6">
+            <div class="card bg-primary text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="me-3">
+                            <div class="text-white-75">Parts Today</div>
+                            <div class="text-lg fw-bold">{{ parts_today }}</div>
+                        </div>
+                        <i class="fas fa-cogs fa-2x text-white-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="card bg-success text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="me-3">
+                            <div class="text-white-75">Machine Hours</div>
+                            <div class="text-lg fw-bold">{{ "%.1f"|format(uptime|default(0)) }}</div>
+                        </div>
+                        <i class="fas fa-clock fa-2x text-white-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Machine Breakdown Status and Controls -->
+    <div class="row mb-4">
+        <div class="col-12">
+            {% if current_machine_obj.status == 'breakdown' %}
+                <div class="alert alert-danger d-flex align-items-center" role="alert">
+                    <i class="fas fa-exclamation-triangle fa-2x me-3"></i>
+                    <div>
+                        <strong>{{ machine.name }} is in BREAKDOWN!</strong> All production actions are disabled.
+                        <form method="POST" action="{{ url_for('operator_panel', machine_name=machine.name) }}" class="mt-2">
+                            <button type="submit" name="action" value="mark_machine_healthy" class="btn btn-sm btn-success">
+                                <i class="fas fa-tools me-1"></i> Mark Machine Healthy
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            {% else %}
+                <form method="POST" action="{{ url_for('operator_panel', machine_name=machine.name) }}" class="float-end">
+                    <button type="submit" name="action" value="report_breakdown" class="btn btn-sm btn-outline-danger">
+                        <i class="fas fa-skull-crossbones me-1"></i> Report Machine Breakdown
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Drawing Selection & Info -->
+        <div class="col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-primary text-white">
+                    <i class="fas fa-ruler-combined me-1"></i> {{ machine.name }} Drawing & Setup
+                </div>
+                <div class="card-body">
+                    <!-- Drawing Selection Form -->
+                    <form method="POST" action="{{ url_for('operator_panel', machine_name=machine.name) }}" class="mb-3">
+                        <input type="hidden" name="action" value="select_drawing_and_start_session">
+                        <div class="input-group">
+                            <input type="text" class="form-control" name="drawing_number_input" placeholder="Enter Drawing Number" value="{{ active_drawing.drawing_number if active_drawing else '' }}">
+                            <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i>Select</button>
+                        </div>
+                    </form>
+
+                    <!-- Current Status -->
+                    {% if current_log %}
+                        <div class="alert alert-info mb-3">
+                            <strong>Current Status:</strong> {{ current_log.current_status | replace('_', ' ') | title }}
+                            {% if current_log.production_hold_fpi and current_log.current_status == 'cycle_completed' %}
+                                <br><small class="text-danger">Waiting for First Piece Inspection</small>
+                            {% endif %}
+                            {% if current_log.run_completed_quantity >= current_log.run_planned_quantity and current_log.current_status == 'cycle_completed' %}
+                                <br><small class="text-warning">Last Piece Inspection Required</small>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+
+                    <!-- Assigned Drawings Table -->
+                    <div class="table-responsive" style="overflow-x: auto;">
+                        <table class="table table-hover table-sm" style="white-space: nowrap;">
+                            <thead>
+                                <tr>
+                                    <th>Drawing</th>
+                                    <th>Tool</th>
+                                    <th>Assigned Qty</th>
+                                    <th>Completed</th>
+                                    <th>Status</th>
+                                    <th>Batches</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="assignmentTableBody">
+                                {% if assignment_rows %}
+                                    {% for assignment in assignment_rows %}
+                                        <tr>
+                                            <td>{{ assignment['drawing_number'] }}</td>
+                                            <td>{{ assignment['tool_number'] }}</td>
+                                            <td>{{ assignment['assigned_quantity'] }}</td>
+                                            <td>{{ assignment['completed_quantity'] }}</td>
+                                            <td>
+                                                <span class="badge {% if assignment['status'] == 'running' %}bg-success{% elif assignment['status'] == 'assigned' %}bg-primary{% elif assignment['status'] == 'completed' %}bg-secondary{% else %}bg-warning{% endif %}">
+                                                    {{ assignment['status'] | title }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {% for batch in assignment['batches'] %}
+                                                    <div class="mb-1">
+                                                        <span class="badge bg-info">Batch {{ batch.batch_id }}</span>
+                                                        <span class="badge bg-secondary">Qty: {{ batch.batch_quantity }}</span>
+                                                        <span class="badge {% if batch.lpi_status == 'passed' %}bg-success{% else %}bg-warning{% endif %}">LPI: {{ batch.lpi_status|capitalize }}</span>
+                                                    </div>
+                                                {% endfor %}
+                                            </td>
+                                            <td>
+                                                {% for batch in assignment['batches'] %}
+                                                    {% if batch.lpi_status == 'passed' %}
+                                                    <button type="button" class="btn btn-sm btn-success mb-1" data-bs-toggle="modal" data-bs-target="#shipModal-{{ assignment['drawing_number'] }}-{{ batch.batch_id }}"
+                                                            {% if batch.lpi_status != 'passed' %}disabled data-bs-toggle="tooltip" title="LPI must be passed before shipping this batch."{% endif %}>
+                                                        <i class="fas fa-shipping-fast me-1"></i>Ship Batch {{ batch.batch_id }}
+                                                    </button>
+                                                    <!-- Ship Modal -->
+                                                    <div class="modal fade" id="shipModal-{{ assignment['drawing_number'] }}-{{ batch.batch_id }}" tabindex="-1" aria-labelledby="shipModalLabel-{{ assignment['drawing_number'] }}-{{ batch.batch_id }}" aria-hidden="true">
+                                                        <div class="modal-dialog">
+                                                            <div class="modal-content">
+                                                                <form method="POST" action="{{ url_for('operator_panel', machine_name=machine.name) }}">
+                                                                    <div class="modal-header">
+                                                                        <h5 class="modal-title" id="shipModalLabel-{{ assignment['drawing_number'] }}-{{ batch.batch_id }}">Ship Quantity (Batch {{ batch.batch_id }})</h5>
+                                                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                                    </div>
+                                                                    <div class="modal-body">
+                                                                        <input type="hidden" name="action" value="ship_quantity">
+                                                                        <input type="hidden" name="drawing_number_input" value="{{ assignment['drawing_number'] }}">
+                                                                        <input type="hidden" name="batch_id" value="{{ batch.batch_id }}">
+                                                                        <div class="mb-3">
+                                                                            <label for="shipQuantity-{{ assignment['drawing_number'] }}-{{ batch.batch_id }}" class="form-label">Quantity to Ship</label>
+                                                                            <input type="number" class="form-control" id="shipQuantity-{{ assignment['drawing_number'] }}-{{ batch.batch_id }}" name="ship_quantity" min="1" max="{{ batch.batch_quantity }}" required>
+                                                                        </div>
+                                                                        <div class="mb-3">
+                                                                            <label class="form-label">Next Operation</label>
+                                                                            <input type="text" class="form-control" value="{{ assignment['next_operation'] }}" readonly>
+                                                                        </div>
+                                                                        <div class="mb-3">
+                                                                            <label class="form-label">Select Next Machine</label>
+                                                                            <select class="form-select" name="next_machine" required>
+                                                                                {% for machine_name in assignment['next_machine_options'] %}
+                                                                                    <option value="{{ machine_name }}">{{ machine_name }}</option>
+                                                                                {% endfor %}
+                                                                            </select>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="modal-footer">
+                                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                                        <button type="submit" class="btn btn-success">Ship</button>
+                                                                    </div>
+                                                                </form>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="7" class="text-center">No drawings assigned to this machine</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    {% if active_drawing %}
+                        <p class="mb-1"><strong>Selected Drawing:</strong> {{ active_drawing.drawing_number }}</p>
+                        <p class="mb-1"><strong>Assigned:</strong> {{ assigned_qty }} units</p>
+                        <p class="mb-1"><strong>Completed:</strong> {{ completed_qty }} units</p>
+                        <p class="mb-1"><strong>Passed:</strong> {{ passed_qty }} units</p>
+                        <p class="mb-1"><strong>FPI Status:</strong> 
+                            <span class="{% if fpi_status == 'pending' %}text-warning{% elif fpi_status == 'passed' %}text-success{% else %}text-danger{% endif %}">
+                                {{ fpi_status|capitalize }}
+                            </span>
+                        </p>
+                        <p class="mb-1"><strong>LPI Status:</strong> 
+                            <span class="{% if lpi_status == 'pending' %}text-warning{% elif lpi_status == 'passed' %}text-success{% else %}text-danger{% endif %}">
+                                {{ lpi_status|capitalize }}
+                            </span>
+                            {% if current_log and current_log.run_completed_quantity >= current_log.run_planned_quantity %}
+                                <small class="text-warning">(Required)</small>
+                            {% endif %}
+                        </p>
+                        {% if current_log and current_log.drawing_id == active_drawing.id %}
+                            <p class="mb-1"><strong>Target for this Run:</strong> {{ current_log.run_planned_quantity | default('N/A') }} units</p>
+                            <p class="mb-1"><strong>Completed in this Run:</strong> {{ current_log.run_completed_quantity | default('N/A') }} units</p>
+                            {% if current_log.production_hold_fpi and current_log.current_status == 'cycle_completed' %}
+                                <div class="alert alert-warning mt-2">
+                                    <i class="fas fa-exclamation-triangle me-1"></i> First Piece Inspection Required
+                                </div>
+                            {% endif %}
+                            {% if current_log.run_completed_quantity >= current_log.run_planned_quantity and current_log.current_status == 'cycle_completed' %}
+                                <div class="alert alert-warning mt-2">
+                                    <i class="fas fa-exclamation-triangle me-1"></i> Last Piece Inspection Required
+                                </div>
+                            {% endif %}
+                            
+                            <!-- Quality Stats -->
+                            <div class="mt-3">
+                                <h6 class="mb-2">Quality Statistics:</h6>
+                                <p class="mb-1"><small>FPI Rejected: {{ current_log.run_rejected_quantity_fpi | default(0) }}</small></p>
+                                <p class="mb-1"><small>LPI Rejected: {{ current_log.run_rejected_quantity_lpi | default(0) }}</small></p>
+                                <p class="mb-1"><small>FPI Rework: {{ current_log.run_rework_quantity_fpi | default(0) }}</small></p>
+                                <p class="mb-1"><small>LPI Rework: {{ current_log.run_rework_quantity_lpi | default(0) }}</small></p>
+                                {% if current_log.scrapped_items %}
+                                    <p class="mb-1"><small>Scrapped: {{ current_log.scrapped_items | length }}</small></p>
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            <p class="mb-1"><small class="text-muted">No active run for this drawing by you. Start setup to create one.</small></p>
+                        {% endif %}
+                        <p class="mb-1"><small><strong>Std. Setup:</strong> {{ active_drawing.end_product_rel.setup_time_std if active_drawing.end_product_rel else 'N/A' }} min</small></p>
+                        <p class="mb-1"><small><strong>Std. Cycle:</strong> {{ active_drawing.end_product_rel.cycle_time_std if active_drawing.end_product_rel else 'N/A' }} min/pc</small></p>
+                        <hr class="my-2">
+                        <small class="text-muted d-block">
+                            SAP ID: {{ active_drawing.sap_id }} | 
+                            Product: {{ active_drawing.end_product_rel.name if active_drawing.end_product_rel else 'N/A' }}
+                        </small>
+                        {% if active_drawing.end_product_rel and active_drawing.end_product_rel.project_rel %}
+                        <small class="text-muted d-block">
+                            Project: {{ active_drawing.end_product_rel.project_rel.project_code }}
+                        </small>
+                        {% endif %}
+                    {% else %}
+                        <p class="text-muted">No drawing selected. Please enter a drawing number.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="col-lg-8 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-primary text-white">
+                    <i class="fas fa-cogs me-1"></i> {{ machine.name }} Production Actions
+                </div>
+                <div class="card-body">
+                    {% if not active_drawing and current_machine_obj.status != 'breakdown' %}
+                        <p class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> Please select a drawing number to enable actions.</p>
+                    {% elif not active_drawing %}
+                         <p class="text-muted"><i class="fas fa-info-circle me-1"></i> Select a drawing to begin.</p>
+                    {% endif %}
+
+                    {# Disable all actions if machine is in breakdown #}
+                    {% set machine_operational = current_machine_obj.status != 'breakdown' %}
+
+                    <form method="POST" action="{{ url_for('operator_panel', machine_name=machine.name) }}">
+                        <input type="hidden" name="drawing_number_input" value="{{ active_drawing.drawing_number if active_drawing else '' }}">
+                        <div class="row gy-3">
+                            <!-- Setup Actions -->
+                            <div class="col-md-6 col-xl-4">
+                                {% set allow_new_setup = machine_operational and active_drawing and (not current_log or current_log.current_status in ['cycle_completed', 'lpi_completed', 'admin_closed']) %}
+                                {% if current_log and current_log.current_status not in ['cycle_completed', 'lpi_completed', 'admin_closed'] %}
+                                    {% set allow_new_setup = false %}
+                                {% endif %}
+                                <button type="submit" name="action" value="start_setup" class="btn btn-lg btn-outline-primary w-100"
+                                        {% if not allow_new_setup %}disabled data-bs-toggle="tooltip" title="Setup already started for this drawing/batch. Complete or close the current log first."{% endif %}>
+                                    <i class="fas fa-tools me-2"></i>Start Setup
+                                </button>
+                                <small class="form-text text-muted d-block">Begin new setup for selected drawing. Creates new log.</small>
+                            </div>
+                            <div class="col-md-6 col-xl-4">
+                                {% set setup_done_allowed = machine_operational and current_log and 
+                                                          current_log.current_status == 'setup_started' and 
+                                                          not current_log.run_completed_quantity %}
+                                <button type="submit" name="action" value="setup_done" class="btn btn-lg btn-primary w-100" 
+                                        {% if not setup_done_allowed %}disabled{% endif %}>
+                                    <i class="fas fa-check-double me-2"></i>Setup Done
+                                </button>
+                                <small class="form-text text-muted d-block">Mark current setup as complete.</small>
+                            </div>
+                            <div class="col-md-6 col-xl-4">
+                                <button type="submit" name="action" value="cancel_current_drawing_log" class="btn btn-lg btn-outline-danger w-100"
+                                        {% if not machine_operational or not current_log or current_log.current_status in ['cycle_completed', 'admin_closed'] %}disabled{% endif %}>
+                                    <i class="fas fa-times-circle me-2"></i>Cancel Log
+                                </button>
+                                <small class="form-text text-muted d-block">Cancel current active log for this drawing.</small>
+                            </div>
+                            
+                            <div class="col-12"><hr></div>
+
+                            <!-- Cycle Actions -->
+                            <div class="col-md-4">
+                                {% set cycle_start_allowed = machine_operational and current_log and (current_log.current_status == 'setup_done' or current_log.current_status == 'fpi_passed_ready_for_cycle' or current_log.current_status == 'cycle_paused') %}
+                                <button type="submit" name="action" value="cycle_start" class="btn btn-lg btn-success w-100"
+                                        {% if not cycle_start_allowed %}disabled{% endif %}>
+                                    <i class="fas fa-play me-2"></i>Start Cycle
+                                </button>
+                                <small class="form-text text-muted d-block">Begin production cycle.</small>
+                            </div>
+                            <div class="col-md-4">
+                                {% set cycle_complete_allowed = machine_operational and current_log and current_log.current_status == 'cycle_started' %}
+                                <button type="submit" name="action" value="cycle_complete" class="btn btn-lg btn-outline-success w-100"
+                                        {% if not cycle_complete_allowed %}disabled{% endif %}>
+                                    <i class="fas fa-check-circle me-2"></i>Complete Cycle
+                                </button>
+                                <small class="form-text text-muted d-block">Mark current cycle as complete.</small>
+                            </div>
+                            <div class="col-md-4">
+                                {% set cycle_pause_allowed = machine_operational and current_log and current_log.current_status == 'cycle_started' %}
+                                <button type="submit" name="action" value="cycle_pause" class="btn btn-lg btn-warning w-100"
+                                        {% if not cycle_pause_allowed %}disabled{% endif %}>
+                                    <i class="fas fa-pause me-2"></i>Pause Cycle
+                                </button>
+                                <small class="form-text text-muted d-block">Temporarily pause current cycle.</small>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Operation History Section -->
+    <div class="card h-100 mt-4">
+        <div class="card-header bg-info text-white">
+            <i class="fas fa-history me-1"></i> Operation History
+        </div>
+        <div class="card-body">
+            <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Drawing</th>
+                            <th>Qty</th>
+                            <th>Status</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for op in operation_history %}
+                        <tr>
+                            <td>{{ op.drawing_number }}</td>
+                            <td>{{ op.quantity }}</td>
+                            <td>{{ op.status }}</td>
+                            <td>{{ op.timestamp }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% if not operation_history %}
+                        <tr><td colspan="4" class="text-center">No history</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const socket = io();
+
+// In-app notification UI
+if (!document.getElementById('notificationArea')) {
+    const notifArea = document.createElement('div');
+    notifArea.id = 'notificationArea';
+    notifArea.style.position = 'fixed';
+    notifArea.style.top = '24px';
+    notifArea.style.right = '24px';
+    notifArea.style.zIndex = '9999';
+    notifArea.style.maxWidth = '320px';
+    document.body.appendChild(notifArea);
+    function showNotification(msg) {
+        const notif = document.createElement('div');
+        notif.style.background = '#007bff';
+        notif.style.color = '#fff';
+        notif.style.padding = '12px 18px';
+        notif.style.marginBottom = '12px';
+        notif.style.borderRadius = '8px';
+        notif.style.boxShadow = '0 2px 8px rgba(0,0,0,0.12)';
+        notif.style.fontWeight = 'bold';
+        notif.textContent = msg;
+        document.getElementById('notificationArea').appendChild(notif);
+        setTimeout(() => notif.remove(), 5000);
+    }
+    socket.on('notify_operator', function(data) {
+        showNotification(data.type + ': ' + (data.drawing || '') + (data.result ? ' - ' + data.result : ''));
+    });
+    socket.on('notify_transfer', function(data) {
+        showNotification('Transfer: ' + data.drawing + ' from ' + data.from + ' to ' + data.to + ' (' + data.quantity + ')');
+    });
+    socket.on('notify_quality', function(data) {
+        showNotification('Quality: ' + data.type + ' for ' + data.drawing + ' on ' + data.machine);
+    });
+    socket.on('notify_manager', function(data) {
+        showNotification('Manager: ' + data.type + ' for ' + data.drawing);
+    });
+}
+
+// Real-time assignments update
+socket.on('assignments_update', function(data) {
+    // Optionally, filter for this machine only
+    if (data && data.assignments) {
+        // Use AJAX to refresh the assignments table
+        $.get(window.location.href, function(response) {
+            // Parse the new table body from the response
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(response, 'text/html');
+            const newTableBody = doc.getElementById('assignmentTableBody');
+            if (newTableBody) {
+                document.getElementById('assignmentTableBody').innerHTML = newTableBody.innerHTML;
+            }
+        });
+    }
+});
+</script>
+{% endblock %} 

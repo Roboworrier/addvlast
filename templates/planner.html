@@ -10,6 +10,23 @@
   .chart-container { height: 300px; width: 100%; }
   .search-container { margin-bottom: 2rem; background: #f8f9fa; padding: 1rem; border-radius: 8px; }
   .search-results { margin-top: 1rem; display: none; }
+  .route-creation-section {
+    margin: 20px;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+  }
+  .operation-item {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .operations-list {
+    margin: 20px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 5px;
+  }
 </style>
 {% endblock %}
 
@@ -242,6 +259,41 @@
       </div></div>
     </div>
   </div>
+</div>
+
+<!-- Add this section before the closing main tag -->
+<div class="route-creation-section" v-if="showRouteCreation">
+    <h3>Create New Route</h3>
+    <form @submit.prevent="createNewRoute" class="route-form">
+        <div class="form-group">
+            <label>SAP ID</label>
+            <input v-model="newRoute.sap_id" required class="form-control">
+        </div>
+        <div class="form-group">
+            <label>Quantity</label>
+            <input type="number" v-model="newRoute.total_quantity" required class="form-control">
+        </div>
+        <div class="form-group">
+            <label>Deadline</label>
+            <input type="date" v-model="newRoute.deadline" class="form-control">
+        </div>
+        <div class="operations-list">
+            <h4>Operations</h4>
+            <div v-for="(op, index) in newRoute.operations" :key="index" class="operation-item">
+                <select v-model="op.type" class="form-control">
+                    <option value="CNC">CNC</option>
+                    <option value="VMC">VMC</option>
+                    <option value="TAPPING">Tapping</option>
+                    <option value="MILLING">Milling</option>
+                    <option value="LATHE">Lathe</option>
+                    <option value="WELDING">Welding</option>
+                </select>
+                <button type="button" @click="removeOperation(index)" class="btn btn-danger">Remove</button>
+            </div>
+            <button type="button" @click="addOperation" class="btn btn-secondary">Add Operation</button>
+        </div>
+        <button type="submit" class="btn btn-primary">Create Route</button>
+    </form>
 </div>
 
 {% set prod_data = production_summary|tojson|default('[]', true) %}
@@ -492,6 +544,47 @@ function searchDrawing() {
             console.error('Error:', error);
             alert('Error searching for drawing');
         });
+}
+</script>
+
+<!-- Add this near the end of the file, before the closing body tag -->
+<script src="{{ url_for('static', filename='js/route_management.js') }}"></script>
+<script>
+// Add to your existing Vue instance
+if (app) {
+    app.data.showRouteCreation = true;
+    app.data.newRoute = {
+        sap_id: '',
+        total_quantity: null,
+        deadline: '',
+        operations: []
+    };
+
+    app.methods.addOperation = function() {
+        this.newRoute.operations.push({ type: 'CNC' });
+    };
+
+    app.methods.removeOperation = function(index) {
+        this.newRoute.operations.splice(index, 1);
+    };
+
+    app.methods.createNewRoute = async function() {
+        try {
+            const result = await RouteManagement.createRoute(this.newRoute);
+            if (result.status === 'success') {
+                alert('Route created successfully');
+                // Reset form
+                this.newRoute = {
+                    sap_id: '',
+                    total_quantity: null,
+                    deadline: '',
+                    operations: []
+                };
+            }
+        } catch (error) {
+            alert('Error creating route: ' + error.message);
+        }
+    };
 }
 </script>
 {% endblock %}

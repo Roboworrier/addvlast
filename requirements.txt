@@ -17,6 +17,9 @@ eventlet>=0.33.3
 python-socketio>=5.8.0
 python-engineio>=4.5.1
 
+# Task Scheduling
+APScheduler>=3.10.1
+
 # Data Processing
 pandas>=1.5.3
 openpyxl>=3.1.2  # For Excel file handling

@@ -3,78 +3,212 @@
 {% block title %}Operator Login - ChipSight{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
+<div class="container">
     <div class="row justify-content-center">
-        <div class="col-md-6 col-lg-5">
-            <div class="card shadow-sm">
-                <div class="card-header bg-info text-white text-center">
-                    <h4><i class="fas fa-hard-hat me-2"></i>Operator Login</h4>
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title mb-0">Select Machine</h3>
                 </div>
-                <div class="card-body p-4">
-                    <form method="POST" action="{{ url_for('operator_login') }}">
-                        <div class="mb-3">
-                            <label for="operator_name" class="form-label">Operator Name</label>
-                            <input type="text" class="form-control" id="operator_name" name="operator_name" required>
+                <div class="card-body">
+                    <!-- VMC Machines -->
+                    <div class="mb-4">
+                        <h4 class="mb-3">
+                            <i class="fas fa-cube me-2"></i>
+                            VMC Machines
+                        </h4>
+                        <div class="row row-cols-1 row-cols-md-3 g-4">
+                            {% for machine in machines %}
+                            {% if machine.machine_type == 'VMC' %}
+                            <div class="col">
+                                <a href="{{ url_for('select_machine', machine_name=machine.name) }}" class="text-decoration-none">
+                                    <div class="card h-100 vmc-card">
+                                        <div class="card-body text-center">
+                                            <h5 class="card-title">{{ machine.name }}</h5>
+                                            <p class="card-text">
+                                                <span class="badge {{ 'bg-success' if machine.status == 'running' or machine.current_operator else 'bg-warning' if machine.status == 'setup' else 'bg-danger' }}">
+                                                    {{ machine.status|title }}
+                                                </span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </a>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
                         </div>
-                        <div class="mb-3">
-                            <label for="machine_name" class="form-label">Machine</label>
-                            <select class="form-select" id="machine_name" name="machine_name" required>
-                                <option value="" selected disabled>Select Machine...</option>
-                                <optgroup label="Leadwell Machines">
-                                    {% for machine_val, machine_display in machine_choices %}
-                                        {% if 'Leadwell' in machine_val %}
-                                            <option value="{{ machine_val }}" class="fw-bold text-success">{{ machine_display }}</option>
-                                        {% endif %}
-                                    {% endfor %}
-                                </optgroup>
-                                <optgroup label="VMC Machines">
-                                    {% for machine_val, machine_display in machine_choices %}
-                                        {% if 'VMC' in machine_val %}
-                                            <option value="{{ machine_val }}">{{ machine_display }}</option>
-                                        {% endif %}
-                                    {% endfor %}
-                                </optgroup>
-                                <optgroup label="HAAS Machines">
-                                    {% for machine_val, machine_display in machine_choices %}
-                                        {% if 'HAAS' in machine_val %}
-                                            <option value="{{ machine_val }}">{{ machine_display }}</option>
-                                        {% endif %}
-                                    {% endfor %}
-                                </optgroup>
-                            </select>
-                            <small class="form-text text-muted">Leadwell machines have dedicated operator panels.</small>
+                    </div>
+
+                    <!-- CNC Machines -->
+                    <div class="mb-4">
+                        <h4 class="mb-3">
+                            <i class="fas fa-cog me-2"></i>
+                            CNC Machines
+                        </h4>
+                        <div class="row row-cols-1 row-cols-md-3 g-4">
+                            {% for machine in machines %}
+                            {% if machine.machine_type == 'CNC' %}
+                            <div class="col">
+                                <a href="{{ url_for('select_machine', machine_name=machine.name) }}" class="text-decoration-none">
+                                    <div class="card h-100 cnc-card">
+                                        <div class="card-body text-center">
+                                            <h5 class="card-title">{{ machine.name }}</h5>
+                                            <p class="card-text">
+                                                <span class="badge {{ 'bg-success' if machine.status == 'running' or machine.current_operator else 'bg-warning' if machine.status == 'setup' else 'bg-danger' }}">
+                                                    {{ machine.status|title }}
+                                                </span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </a>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
                         </div>
-                        <div class="mb-3">
-                            <label for="shift" class="form-label">Shift</label>
-                            <select class="form-select" id="shift" name="shift" required>
-                                <option value="" selected disabled>Select Shift...</option>
-                                <option value="A">Shift A</option>
-                                <option value="B">Shift B</option>
-                                <option value="C">Shift C</option>
-                                <!-- Add more shifts if needed -->
-                            </select>
+                    </div>
+
+                    <!-- BANDSAW Machines -->
+                    <div class="mb-4">
+                        <h4 class="mb-3">
+                            <i class="fas fa-cut me-2"></i>
+                            BANDSAW Machines
+                        </h4>
+                        <div class="row row-cols-1 row-cols-md-3 g-4">
+                            {% for machine in machines %}
+                            {% if machine.machine_type == 'BANDSAW' %}
+                            <div class="col">
+                                <a href="{{ url_for('select_machine', machine_name=machine.name) }}" class="text-decoration-none">
+                                    <div class="card h-100 bandsaw-card">
+                                        <div class="card-body text-center">
+                                            <h5 class="card-title">{{ machine.name }}</h5>
+                                            <p class="card-text">
+                                                <span class="badge {{ 'bg-success' if machine.status == 'running' or machine.current_operator else 'bg-warning' if machine.status == 'setup' else 'bg-danger' }}">
+                                                    {{ machine.status|title }}
+                                                </span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </a>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
                         </div>
-                        <div class="d-grid">
-                            <button type="submit" class="btn btn-info btn-block text-white"><i class="fas fa-sign-in-alt me-2"></i>Login to Machine</button>
+                    </div>
+
+                    <!-- LATHE Machines -->
+                    <div class="mb-4">
+                        <h4 class="mb-3">
+                            <i class="fas fa-circle-notch me-2"></i>
+                            LATHE Machines
+                        </h4>
+                        <div class="row row-cols-1 row-cols-md-3 g-4">
+                            {% for machine in machines %}
+                            {% if machine.name == 'MANUAL LATHE 1' %}
+                            <div class="col">
+                                <a href="{{ url_for('select_machine', machine_name=machine.name) }}" class="text-decoration-none">
+                                    <div class="card h-100 lathe-card">
+                                        <div class="card-body text-center">
+                                            <h5 class="card-title">{{ machine.name }}</h5>
+                                            <p class="card-text">
+                                                <span class="badge {{ 'bg-success' if machine.status == 'running' or machine.current_operator else 'bg-warning' if machine.status == 'setup' else 'bg-danger' }}">
+                                                    {{ machine.status|title }}
+                                                </span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </a>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
                         </div>
-                    </form>
-                    <hr>
-                    <div class="text-center">
-                         <a href="{{ url_for('login_general') }}" class="btn btn-outline-secondary btn-sm mt-2">Planner/Manager/Quality Login</a>
+                    </div>
+
+                    <!-- MILLING Machines -->
+                    <div class="mb-4">
+                        <h4 class="mb-3">
+                            <i class="fas fa-cogs me-2"></i>
+                            MILLING Machines
+                        </h4>
+                        <div class="row row-cols-1 row-cols-md-3 g-4">
+                            {% for machine in machines %}
+                            {% if machine.name == 'MILLING MACHINE 1' %}
+                            <div class="col">
+                                <a href="{{ url_for('select_machine', machine_name=machine.name) }}" class="text-decoration-none">
+                                    <div class="card h-100 milling-card">
+                                        <div class="card-body text-center">
+                                            <h5 class="card-title">{{ machine.name }}</h5>
+                                            <p class="card-text">
+                                                <span class="badge {{ 'bg-success' if machine.status == 'running' or machine.current_operator else 'bg-warning' if machine.status == 'setup' else 'bg-danger' }}">
+                                                    {{ machine.status|title }}
+                                                </span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </a>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- WELDING Machines -->
+                    <div class="mb-4">
+                        <h4 class="mb-3">
+                            <i class="fas fa-fire me-2"></i>
+                            WELDING Machines
+                        </h4>
+                        <div class="row row-cols-1 row-cols-md-3 g-4">
+                            {% for machine in machines %}
+                            {% if machine.machine_type == 'WELDING' %}
+                            <div class="col">
+                                <a href="{{ url_for('select_machine', machine_name=machine.name) }}" class="text-decoration-none">
+                                    <div class="card h-100 welding-card">
+                                        <div class="card-body text-center">
+                                            <h5 class="card-title">{{ machine.name }}</h5>
+                                            <p class="card-text">
+                                                <span class="badge {{ 'bg-success' if machine.status == 'running' or machine.current_operator else 'bg-warning' if machine.status == 'setup' else 'bg-danger' }}">
+                                                    {{ machine.status|title }}
+                                                </span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </a>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- TAPPING Machines -->
+                    <div class="mb-4">
+                        <h4 class="mb-3">
+                            <i class="fas fa-bolt me-2"></i>
+                            TAPPING Machines
+                        </h4>
+                        <div class="row row-cols-1 row-cols-md-3 g-4">
+                            {% for machine in machines %}
+                            {% if machine.machine_type == 'TAPPING' %}
+                            <div class="col">
+                                <a href="{{ url_for('select_machine', machine_name=machine.name) }}" class="text-decoration-none">
+                                    <div class="card h-100 tapping-card">
+                                        <div class="card-body text-center">
+                                            <h5 class="card-title">{{ machine.name }}</h5>
+                                            <p class="card-text">
+                                                <span class="badge {{ 'bg-success' if machine.status == 'running' or machine.current_operator else 'bg-warning' if machine.status == 'setup' else 'bg-danger' }}">
+                                                    {{ machine.status|title }}
+                                                </span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </a>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
-
-<style>
-    /* Style for Leadwell machine options */
-    option.fw-bold {
-        font-weight: bold !important;
-    }
-    option.text-success {
-        color: #198754 !important;
-    }
-</style>
 {% endblock %} 

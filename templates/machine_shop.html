@@ -2,7 +2,14 @@
 
 {% block title %}Machine Shop{% endblock %}
 
+{% block head %}
+<!-- Add Vue.js before other scripts -->
+<script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+{% endblock %}
+
 {% block content %}
+<div id="app">
 <div class="container-fluid">
     <!-- Statistics Cards -->
     <div class="row mb-4">
@@ -40,73 +47,206 @@
         </div>
     </div>
 
-    <!-- Assignment Form -->
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Assign Drawing to Machine</h5>
+    <!-- Advanced Route Assignment Section (MAIN ASSIGNMENT FORM) -->
+    <div class="card mb-4" id="route-assignment-section">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h4 class="mb-0"><i class="fas fa-route me-2"></i>Route Assignment - Machine Assignment Form</h4>
+            <span class="badge bg-light text-dark">Process-Based Assignment</span>
+        </div>
+        <div class="card-body">
+            <!-- Step 1: SAP ID Selection -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <h5 class="text-primary mb-3"><i class="fas fa-search me-2"></i>Step 1: Select SAP ID</h5>
                 </div>
-                <div class="card-body">
-                    <form id="assignmentForm" method="POST" action="{{ url_for('machine_shop_assign') }}">
-                        <div class="row">
-                            <div class="col-md-2">
-                                <div class="form-group">
-                                    <label for="drawing_number">Drawing Number/SAP ID</label>
-                                    <input type="text" class="form-control drawing-number-input" name="drawing_number" required>
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="form-group">
-                                    <label for="machine_id">Machine</label>
-                                    <select class="form-control" name="machine_id" required>
-                                        <option value="">Select Machine</option>
-                                        {% for machine in machines %}
-                                        <option value="{{ machine.id }}">{{ machine.name }}</option>
-                                        {% endfor %}
+                <div class="col-md-6">
+                    <label for="sapIdInput" class="form-label fw-bold">SAP ID</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-barcode"></i></span>
+                        <input type="text" id="sapIdInput" class="form-control form-control-lg" 
+                               v-model="routeAssign.sapIdInput" @input="onSapIdInput" 
+                               placeholder="Enter SAP ID to search..." autocomplete="off">
+                    </div>
+                    <div v-if="routeAssign.sapIdSuggestions.length" class="list-group position-absolute w-100" style="z-index: 10; max-height: 200px; overflow-y: auto;">
+                        <button v-for="suggestion in routeAssign.sapIdSuggestions" :key="suggestion" 
+                                class="list-group-item list-group-item-action" @click="selectSapIdSuggestion(suggestion)">
+                            <i class="fas fa-check me-2"></i>[[ suggestion ]]
+                        </button>
+                    </div>
+                    <div class="form-text">Start typing to search for available SAP IDs</div>
+                    <div class="mt-2">
+                        <label class="form-label fw-bold">Route</label>
+                        <input type="text" class="form-control" :value="routeAssign.selectedRoute ? routeAssign.selectedRoute.route_str : ''" readonly>
+                    </div>
+                </div>
+                <div class="col-md-6" v-if="routeAssign.selectedRoute">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Total Quantity</label>
+                            <input type="number" class="form-control" v-model="routeAssign.totalQuantity" readonly>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Assign Quantity</label>
+                            <input type="number" class="form-control" v-model.number="routeAssign.assignQuantity" :max="routeAssign.remainingQuantity" min="1" @input="routeAssign.remainingQuantity = routeAssign.totalQuantity - routeAssign.assignQuantity">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Remaining</label>
+                            <input type="number" class="form-control" :value="routeAssign.remainingQuantity" readonly>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Operation Sequence & Machine Assignment -->
+            <div v-if="routeAssign.selectedRoute" class="mb-4">
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <h5 class="text-primary mb-3">
+                            <i class="fas fa-cogs me-2"></i>Step 2: Operation Sequence & Machine Assignment
+                            <button class="btn btn-sm btn-outline-secondary ms-2" @click="editOperationSequence" v-if="!routeAssign.editingSequence">
+                                <i class="fas fa-edit"></i> Edit Sequence
+                            </button>
+                        </h5>
+                        <div v-if="routeAssign.inProgressWarning" class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Warning:</strong> This route is in progress. Editing the sequence may cause inconsistencies.
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover align-middle">
+                        <thead class="table-primary">
+                            <tr>
+                                <th width="5%">#</th>
+                                <th width="20%">Operation Type</th>
+                                <th width="20%">Machine Group</th>
+                                <th width="30%">Select Machine</th>
+                                <th width="15%">Status</th>
+                                <th width="10%" v-if="routeAssign.editingSequence">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(op, idx) in routeAssign.operationSequence" :key="op.id || idx" 
+                                :class="{'table-warning': !op.assigned_machine && routeAssign.assignQuantity > 0}">
+                                <td class="text-center fw-bold">[[ idx+1 ]]</td>
+                                <td>
+                                    <span v-if="!routeAssign.editingSequence" class="badge bg-secondary">[[ op.operation_type ]]</span>
+                                    <select v-else v-model="op.operation_type" class="form-select form-select-sm">
+                                        <option value="">Select Type</option>
+                                        <option v-for="type in routeAssign.operationTypes" :value="type">[[ type ]]</option>
                                     </select>
-                                </div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-info">[[ getMachineGroupLabel(op.operation_type) ]]</span>
+                                </td>
+                                <td>
+                                    <select v-model="op.assigned_machine" class="form-select">
+                                        <option value="">Select Machine from [[ getMachineGroupLabel(op.operation_type) ]]</option>
+                                        <option v-for="machine in getMachinesForType(op.operation_type)" :value="machine" :key="machine">[[ machine ]]</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <span v-if="op.status" class="badge" 
+                                          :class="{'bg-success': op.status === 'completed', 'bg-warning': op.status === 'in_progress', 'bg-secondary': op.status === 'pending'}">
+                                        [[ op.status ]]
+                                    </span>
+                                    <span v-else class="text-muted">Not Assigned</span>
+                                </td>
+                                <td v-if="routeAssign.editingSequence" class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-danger" @click="removeOperation(idx)" title="Remove Operation">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                        <button class="btn btn-outline-secondary" @click="moveOperation(idx, -1)" 
+                                                :disabled="idx===0" title="Move Up">
+                                            <i class="fas fa-arrow-up"></i>
+                                        </button>
+                                        <button class="btn btn-outline-secondary" @click="moveOperation(idx, 1)" 
+                                                :disabled="idx===routeAssign.operationSequence.length-1" title="Move Down">
+                                            <i class="fas fa-arrow-down"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <!-- Sequence Editing Controls -->
+                    <div v-if="routeAssign.editingSequence" class="mb-3">
+                        <button class="btn btn-primary" @click="addOperation">
+                            <i class="fas fa-plus"></i> Add Operation
+                        </button>
+                        <button class="btn btn-success ms-2" @click="saveOperationSequence">
+                            <i class="fas fa-save"></i> Save Sequence
+                        </button>
+                        <button class="btn btn-secondary ms-2" @click="cancelEditSequence">
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Progress & Assignment -->
+            <div v-if="routeAssign.selectedRoute" class="mb-4">
+                <div class="row">
+                    <div class="col-12">
+                        <h5 class="text-primary mb-3">
+                            <i class="fas fa-chart-line me-2"></i>Step 3: Progress & Assignment
+                        </h5>
+                    </div>
+                </div>
+                
+                <!-- Progress Bar -->
+                <div class="row mb-3">
+                    <div class="col-md-8">
+                        <label class="form-label fw-bold">Overall Progress</label>
+                        <div class="progress mb-2" style="height: 30px;">
+                            <div class="progress-bar bg-success" role="progressbar" 
+                                 :style="{width: routeAssign.progressPercent + '%'}" 
+                                 :aria-valuenow="routeAssign.progressPercent" aria-valuemin="0" aria-valuemax="100">
+                                [[ routeAssign.progressText ]]
                             </div>
-                            <div class="col-md-1">
-                                <div class="form-group">
-                                    <label for="quantity">Quantity</label>
-                                    <input type="number" class="form-control" name="quantity" min="1" required>
-                                </div>
-                            </div>
-                            <div class="col-md-1">
-                                <div class="form-group">
-                                    <label>Total Qty</label>
-                                    <input type="number" class="form-control total-quantity" readonly>
-                                </div>
-                            </div>
-                            <div class="col-md-1">
-                                <div class="form-group">
-                                    <label>Assigned Qty</label>
-                                    <input type="number" class="form-control assigned-quantity" readonly>
-                                </div>
-                            </div>
-                            <div class="col-md-1">
-                                <div class="form-group">
-                                    <label>Remaining Qty</label>
-                                    <input type="number" class="form-control remaining-quantity" readonly>
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="form-group">
-                                    <label for="tool_number">Tool Number</label>
-                                    <input type="text" class="form-control tool-number" name="tool_number" pattern="[A-Z0-9_, ]+" required>
-                                    <small class="form-text text-muted">Multiple tools: TOOL1,TOOL_3MM</small>
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="form-group">
-                                    <label>&nbsp;</label>
-                                    <button type="submit" class="btn btn-primary w-100">Assign</button>
+                        </div>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button class="btn btn-success btn-lg w-100" @click="assignRouteToMachines">
+                            <i class="fas fa-check-circle me-2"></i>
+                            Assign Route
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Assignment Log -->
+                <div class="row">
+                    <div class="col-12">
+                        <button class="btn btn-link p-0" @click="toggleLog">
+                            <i class="fas fa-history me-2"></i>
+                            [[ routeAssign.showLog ? 'Hide' : 'Show' ]] Assignment/Transfer Log
+                        </button>
+                        <div v-if="routeAssign.showLog" class="mt-2">
+                            <div class="card">
+                                <div class="card-body" style="max-height: 200px; overflow-y: auto;">
+                                    <ul class="list-group list-group-flush">
+                                        <li v-for="log in routeAssign.assignmentLog" :key="log" class="list-group-item small">
+                                            <i class="fas fa-info-circle me-2 text-info"></i>[[ log ]]
+                                        </li>
+                                        <li v-if="routeAssign.assignmentLog.length === 0" class="list-group-item text-muted">
+                                            No assignment history available
+                                        </li>
+                                    </ul>
                                 </div>
                             </div>
                         </div>
-                    </form>
+                    </div>
                 </div>
+            </div>
+
+            <!-- No Route Selected Message -->
+            <div v-if="!routeAssign.selectedRoute" class="text-center py-5">
+                <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">Enter a SAP ID above to start the assignment process</h5>
+                <p class="text-muted">The system will automatically load the operation sequence and available machines</p>
             </div>
         </div>
     </div>
@@ -267,6 +407,211 @@
     </div>
 </div>
 
+<!-- Assigned Routes Table: add v-if="assignedRoutes && assignedRoutes.length > 0" -->
+<div class="card mt-4" v-if="assignedRoutes && assignedRoutes.length > 0">
+    <div class="card-header bg-info text-white">
+        <h5 class="mb-0"><i class="fas fa-tasks me-2"></i>Assigned Routes Status</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>SAP ID</th>
+                        <th>Route</th>
+                        <th>Total Quantity</th>
+                        <th>Assigned</th>
+                        <th>Completed</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="route in assignedRoutes" :key="route.sap_id">
+                        <td>[[ route.sap_id ]]</td>
+                        <td>[[ route.route_str || '' ]]</td>
+                        <td>[[ route.total_quantity ]]</td>
+                        <td>[[ route.assigned_quantity ]]</td>
+                        <td>[[ route.completed_quantity ]]</td>
+                        <td>
+                            <span class="badge" :class="{
+                                'bg-success': route.status === 'Completed',
+                                'bg-warning': route.status === 'In Progress',
+                                'bg-secondary': route.status === 'Not Started'
+                            }">[[ route.status ]]</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Error Alert -->
+<div v-if="error" class="alert alert-danger alert-dismissible fade show position-fixed top-0 end-0 m-3" role="alert" style="z-index: 1050;">
+    <strong>Error!</strong> [[ error ]]
+    <button type="button" class="btn-close" @click="error = null" aria-label="Close"></button>
+</div>
+
+<!-- Loading Overlay -->
+<div v-if="loading" class="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center" style="background: rgba(0,0,0,0.5); z-index: 1040;">
+    <div class="spinner-border text-light" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+</div>
+
+<!-- Machine Groups - Status Display Only -->
+<!-- (Removed as per request; status will be shown in digital twin) -->
+
+<!-- Add this to your route creation/editing form -->
+<div class="route-operation-form" v-if="editingRoute">
+    <div class="form-group">
+        <label>Operation Type</label>
+        <select v-model="currentOperation.type" class="form-control" @change="updateMachineOptions">
+            <option value="">Select Operation Type</option>
+            <option value="CNC">CNC</option>
+            <option value="VMC">VMC</option>
+            <option value="BANDSAW">Bandsaw</option>
+            <option value="TAPPING_GROUP">Tapping</option>
+            <option value="MILLING">Milling</option>
+            <option value="MANUAL_LATHE">Manual Lathe</option>
+            <option value="WELDING_GROUP">Welding</option>
+        </select>
+    </div>
+    
+    <div class="form-group" v-if="currentOperation.type">
+        <label>Assign Machine</label>
+        <select v-model="currentOperation.machine" class="form-control">
+            <option value="">Select Machine</option>
+            <option v-for="machine in availableMachines" 
+                    :value="machine"
+                    :key="machine">
+                {{ machine }}
+            </option>
+        </select>
+    </div>
+</div>
+
+<style>
+.route-management-section {
+    margin: 20px;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+.route-card {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.route-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+.operation {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 10px;
+    background: white;
+    border-radius: 4px;
+}
+
+.machine-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.machine-group {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.machine-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.machine-item {
+    padding: 10px;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    background: #f8f9fa;
+}
+
+.machine-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.machine-status {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.9em;
+}
+
+.machine-status.IDLE {
+    background: #28a745;
+    color: white;
+}
+
+.machine-status.BUSY {
+    background: #ffc107;
+    color: black;
+}
+
+.machine-status.MAINTENANCE {
+    background: #dc3545;
+    color: white;
+}
+
+.current-job {
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 5px;
+}
+
+.machine-suggestions {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.suggestion-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.suggestion-item {
+    display: inline-block;
+}
+
+.suggestion-item .badge {
+    margin-left: 0.5rem;
+}
+
+.idle {
+    border: 1px solid #28a745;
+    border-radius: 4px;
+}
+</style>
+
 {% endblock %}
 
 {% block scripts %}
@@ -275,7 +620,7 @@
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css">
 <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.html5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
@@ -295,16 +640,15 @@ document.addEventListener('DOMContentLoaded', function() {
     function autofillDrawingInfo(e) {
         const input = e.target;
         const val = input.value.trim();
+        const form = input.closest('form');
         // Only trigger if input is at least 5 characters (adjust as needed)
         if (!val || val.length < 5) {
-            const form = input.closest('form');
             form.querySelector('.total-quantity').value = '';
             form.querySelector('.assigned-quantity').value = '';
             form.querySelector('.remaining-quantity').value = '';
             form.querySelector('.tool-number').value = '';
             return;
         }
-        const form = input.closest('form');
         fetch(`/api/drawing_info/${encodeURIComponent(val)}`)
             .then(resp => resp.json())
             .then(data => {
@@ -313,8 +657,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     form.querySelector('.assigned-quantity').value = '';
                     form.querySelector('.remaining-quantity').value = '';
                     form.querySelector('.tool-number').value = '';
-                    // Only show alert if the field is not being cleared
-                    if (val.length >= 5) {
+                    // Only show alert if this is a blur event
+                    if (e.type === 'blur' && val.length >= 5) {
                         alert('Drawing or SAP ID not found!');
                     }
                     return;
@@ -428,6 +772,327 @@ document.addEventListener('DOMContentLoaded', function() {
         $('.dt-buttons .btn').first().focus();
         $('.dt-buttons .btn').get(0).click();
     });
+});
+</script>
+
+<!-- Add this near the end of the file, before the closing body tag -->
+<script src="{{ url_for('static', filename='js/route_management.js') }}"></script>
+<script>
+const app = new Vue({
+    el: '#app',
+    delimiters: ['[[', ']]'],
+    data() {
+        return {
+            showRouteManagement: true,
+            pendingRoutes: [],
+            suggestions: {},
+            tappingMachines: [],
+            weldingMachines: [],
+            millingMachines: [{name: 'MILLING MACHINE 1', status: 'IDLE', currentJob: null}],
+            latheMachines: [{name: 'MANUAL LATHE 1', status: 'IDLE', currentJob: null}],
+            vmcMachines: [],
+            cncMachines: [],
+            bandsawMachines: [],
+            editingRoute: false,
+            currentOperation: {
+                type: '',
+                machine: ''
+            },
+            availableMachines: [],
+            error: null,
+            loading: false,
+            routeAssign: {
+                sapIdInput: '',
+                sapIdSuggestions: [],
+                selectedSapIds: [],
+                selectedRoute: null,
+                totalQuantity: 0,
+                assignQuantity: 0,
+                remainingQuantity: 0,
+                operationSequence: [],
+                editingSequence: false,
+                inProgressWarning: false,
+                operationTypes: ['CNC', 'VMC', 'BANDSAW', 'TAPPING_GROUP', 'MILLING', 'MANUAL_LATHE', 'LATHE', 'WELDING_GROUP'],
+                showLog: false,
+                assignmentLog: [],
+                progressPercent: 0,
+                progressText: '',
+            },
+            assignedRoutes: [],
+        };
+    },
+    async created() {
+        try {
+            // Parse routes data from server
+            const routesData = {{ routes|tojson|safe }};
+            if (routesData && Array.isArray(routesData)) {
+                this.pendingRoutes = routesData.filter(r => r.status === 'PENDING');
+            }
+            // Load machine statuses
+            await this.loadMachineStatuses();
+        } catch (error) {
+            console.error('Error initializing data:', error);
+            this.error = 'Failed to load initial data';
+        }
+    },
+    methods: {
+        formatDate(dateString) {
+            if (!dateString) return '';
+            return new Date(dateString).toLocaleDateString();
+        },
+        async withLoading(callback) {
+            this.loading = true;
+            try {
+                await callback();
+            } finally {
+                this.loading = false;
+            }
+        },
+        showError(message, duration = 5000) {
+            this.error = message;
+            setTimeout(() => {
+                if (this.error === message) {
+                    this.error = null;
+                }
+            }, duration);
+        },
+        async loadMachineStatuses() {
+            await this.withLoading(async () => {
+                try {
+                    const response = await axios.get('/api/machine-statuses');
+                    const data = response.data;
+                    this.tappingMachines = data.tappingMachines || [];
+                    this.weldingMachines = data.weldingMachines || [];
+                    this.millingMachines = data.millingMachines || [];
+                    this.latheMachines = data.latheMachines || [];
+                    this.vmcMachines = data.vmcMachines || [];
+                    this.cncMachines = data.cncMachines || [];
+                    this.bandsawMachines = data.bandsawMachines || [];
+                } catch (error) {
+                    console.error('Error loading machine statuses:', error);
+                    this.showError('Failed to load machine statuses');
+                }
+            });
+        },
+        async loadSuggestions(operationId) {
+            try {
+                const response = await axios.get(`/api/machine_suggestions/${operationId}`);
+                this.$set(this.suggestions, operationId, response.data.suggestions);
+            } catch (error) {
+                console.error('Error loading suggestions:', error);
+                this.error = 'Failed to load machine suggestions';
+            }
+        },
+        async assignMachine(operationId, machineName) {
+            try {
+                await axios.post('/api/assign_machine', {
+                    operation_id: operationId,
+                    machine_name: machineName
+                });
+                // Refresh routes after assignment
+                const response = await axios.get('/api/pending_routes');
+                this.pendingRoutes = response.data.routes;
+                // Clear suggestions for this operation
+                this.$delete(this.suggestions, operationId);
+            } catch (error) {
+                console.error('Error assigning machine:', error);
+                this.error = 'Failed to assign machine';
+            }
+        },
+        async clearAssignment(operationId) {
+            try {
+                await axios.post('/api/clear_machine_assignment', {
+                    operation_id: operationId
+                });
+                // Refresh routes after clearing
+                const response = await axios.get('/api/pending_routes');
+                this.pendingRoutes = response.data.routes;
+            } catch (error) {
+                console.error('Error clearing assignment:', error);
+                this.error = 'Failed to clear machine assignment';
+            }
+        },
+        async startRoute(routeId) {
+            try {
+                await axios.post('/api/start_route', {
+                    route_id: routeId
+                });
+                // Remove the route from pending routes
+                this.pendingRoutes = this.pendingRoutes.filter(r => r.id !== routeId);
+            } catch (error) {
+                console.error('Error starting route:', error);
+                this.error = 'Failed to start route';
+            }
+        },
+        updateMachineOptions() {
+            if (this.currentOperation.type) {
+                this.availableMachines = RouteOperation.get_available_machines(this.currentOperation.type);
+            } else {
+                this.availableMachines = [];
+            }
+        },
+        async onSapIdInput() {
+            // Fetch SAP ID suggestions from backend (implement /api/sap_suggestions if needed)
+            if (this.routeAssign.sapIdInput.length < 2) {
+                this.routeAssign.sapIdSuggestions = [];
+                return;
+            }
+            try {
+                const resp = await axios.get(`/api/sap_suggestions?q=${encodeURIComponent(this.routeAssign.sapIdInput)}`);
+                this.routeAssign.sapIdSuggestions = resp.data.suggestions || [];
+            } catch (e) {
+                this.routeAssign.sapIdSuggestions = [];
+            }
+        },
+        selectSapIdSuggestion(sapId) {
+            this.routeAssign.sapIdInput = sapId;
+            this.routeAssign.sapIdSuggestions = [];
+            this.loadRouteForSapId(sapId);
+        },
+        async loadRouteForSapId(sapId) {
+            // Fetch route info for SAP ID
+            try {
+                const resp = await axios.get(`/api/route_info/${encodeURIComponent(sapId)}`);
+                const data = resp.data;
+                this.routeAssign.selectedRoute = data.route;
+                this.routeAssign.totalQuantity = data.total_quantity;
+                this.routeAssign.remainingQuantity = data.remaining_quantity;
+                this.routeAssign.assignQuantity = 0;
+                // Do NOT auto-populate operationSequence, keep it manual
+                // this.routeAssign.operationSequence = data.operations.map(op => ({ ...op }));
+                this.routeAssign.editingSequence = false;
+                this.routeAssign.inProgressWarning = data.in_progress;
+                this.routeAssign.assignmentLog = data.assignment_log || [];
+                this.updateProgress();
+            } catch (e) {
+                this.showError('Failed to load route for SAP ID');
+            }
+        },
+        getMachineGroupLabel(type) {
+            const map = {
+                'CNC': 'CNC Group',
+                'VMC': 'VMC Group',
+                'BANDSAW': 'Bandsaw Group',
+                'TAPPING_GROUP': 'Tapping Group',
+                'MILLING': 'Milling',
+                'MANUAL_LATHE': 'Manual Lathe',
+                'LATHE': 'Lathe',
+                'WELDING_GROUP': 'Welding Group',
+            };
+            return map[type] || type;
+        },
+        getMachinesForType(type) {
+            switch (type) {
+                case 'MILLING': return this.millingMachines.filter(m => m.name === 'MILLING MACHINE 1').map(m => m.name);
+                case 'LATHE': return this.latheMachines.filter(m => m.name === 'MANUAL LATHE 1').map(m => m.name);
+                case 'CNC': return this.cncMachines.map(m => m.name);
+                case 'VMC': return this.vmcMachines.map(m => m.name);
+                case 'BANDSAW': return this.bandsawMachines.map(m => m.name);
+                case 'TAPPING_GROUP': return this.tappingMachines.map(m => m.name);
+                case 'MANUAL_LATHE': return this.latheMachines.filter(m => m.name === 'MANUAL LATHE 1').map(m => m.name);
+                case 'WELDING_GROUP': return ['MIG WELDING', 'TIG WELDING', 'LASER WELDING', 'ARC WELDING'];
+                default: return [];
+            }
+        },
+        editOperationSequence() {
+            if (this.routeAssign.inProgressWarning) {
+                if (!confirm('Warning: Editing the sequence for an in-progress route may cause inconsistencies. Proceed?')) return;
+            }
+            this.routeAssign.editingSequence = true;
+        },
+        addOperation() {
+            this.routeAssign.operationSequence.push({ operation_type: '', assigned_machine: '', status: '' });
+        },
+        removeOperation(idx) {
+            this.routeAssign.operationSequence.splice(idx, 1);
+        },
+        moveOperation(idx, dir) {
+            const seq = this.routeAssign.operationSequence;
+            if (dir === -1 && idx > 0) [seq[idx-1], seq[idx]] = [seq[idx], seq[idx-1]];
+            if (dir === 1 && idx < seq.length-1) [seq[idx+1], seq[idx]] = [seq[idx], seq[idx+1]];
+        },
+        async saveOperationSequence() {
+            // Save edited sequence to backend (implement /api/update_route_sequence if needed)
+            try {
+                await axios.post('/api/update_route_sequence', {
+                    sap_id: this.routeAssign.selectedRoute.sap_id,
+                    operations: this.routeAssign.operationSequence
+                });
+                this.routeAssign.editingSequence = false;
+            } catch (e) {
+                this.showError('Failed to save operation sequence');
+            }
+        },
+        cancelEditSequence() {
+            this.routeAssign.editingSequence = false;
+        },
+        async assignRouteToMachines() {
+            // Assign the selected quantity and machines for the whole route (implement /api/assign_route if needed)
+            if (!this.routeAssign.selectedRoute) return;
+            if (!this.routeAssign.assignQuantity || this.routeAssign.assignQuantity < 1) {
+                this.showError('Please enter a valid quantity to assign.');
+                return;
+            }
+            // Only send operations with assigned_machine
+            const assignedOps = this.routeAssign.operationSequence.filter(op => op.assigned_machine);
+            try {
+                await axios.post('/api/assign_route', {
+                    sap_id: this.routeAssign.selectedRoute.sap_id,
+                    quantity: this.routeAssign.assignQuantity,
+                    operations: assignedOps
+                });
+                this.loadRouteForSapId(this.routeAssign.selectedRoute.sap_id);
+                this.showError('Route assigned successfully!', 2000);
+            } catch (e) {
+                this.showError('Failed to assign route.');
+            }
+        },
+        updateProgress() {
+            // Calculate and update progress bar and text
+            if (!this.routeAssign.selectedRoute) return;
+            const total = this.routeAssign.totalQuantity;
+            const completed = this.routeAssign.selectedRoute.completed_quantity || 0;
+            this.routeAssign.progressPercent = total ? Math.round((completed/total)*100) : 0;
+            this.routeAssign.progressText = `${completed}/${total} completed`;
+        },
+        toggleLog() {
+            this.routeAssign.showLog = !this.routeAssign.showLog;
+        },
+    }
+});
+</script>
+
+<!-- Add this at the end of the file, before </script>: -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.io) {
+        const socket = io();
+        socket.on('assignments_update', function(data) {
+            if (data && data.assignments) {
+                // Update the assignments table (replace tbody)
+                const tbody = document.querySelector('#assignmentsTable tbody');
+                if (tbody) {
+                    tbody.innerHTML = '';
+                    data.assignments.forEach(function(assignment) {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${assignment.machine_name}</td>
+                            <td>${assignment.drawing_number}</td>
+                            <td>${assignment.tool_number}</td>
+                            <td>${assignment.assigned_quantity}</td>
+                            <td>${assignment.completed_quantity}</td>
+                            <td>${assignment.total_quantity}</td>
+                            <td>${assignment.remaining_quantity}</td>
+                            <td><span class="badge bg-${assignment.status_class}">${assignment.status}</span></td>
+                            <td>${assignment.current_operator || 'Not Assigned'}</td>
+                            <td><!-- actions --></td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                }
+            }
+        });
+    }
 });
 </script>
 {% endblock %} 

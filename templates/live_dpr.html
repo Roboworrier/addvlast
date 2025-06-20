@@ -38,21 +38,29 @@
                         </div>
                     </div>
 
+                    <!-- Available Reports List -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Available DPR Reports (Last 30 Days)</label>
+                            <ul id="dprReportList" class="list-group"></ul>
+                        </div>
+                    </div>
+
                     <!-- DPR Table -->
                     <div class="table-responsive">
                         <table class="table table-hover" id="dprTable">
                             <thead>
                                 <tr>
-                                    <th>Date (IST)</th>
+                                    <th>Date (UTC)</th>
                                     <th>Machine</th>
                                     <th>Operator</th>
                                     <th>Project</th>
                                     <th>SAP ID</th>
                                     <th>Drawing No</th>
-                                    <th>Setup Start (IST)</th>
-                                    <th>Setup End (IST)</th>
-                                    <th>First Cycle Start (IST)</th>
-                                    <th>Last Cycle End (IST)</th>
+                                    <th>Setup Start (UTC)</th>
+                                    <th>Setup End (UTC)</th>
+                                    <th>First Cycle Start (UTC)</th>
+                                    <th>Last Cycle End (UTC)</th>
                                     <th>Assigned Qty</th>
                                     <th>Completed Qty</th>
                                     <th>Passed Qty</th>
@@ -73,37 +81,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for log in logs %}
-                                <tr>
-                                    <td>{{ log.date }}</td>
-                                    <td>{{ log.mc_do }}</td>
-                                    <td>{{ log.operator if log.operator else 'N/A' }}</td>
-                                    <td>{{ log.proj }}</td>
-                                    <td>{{ log.sap_no }}</td>
-                                    <td>{{ log.drg_no }}</td>
-                                    <td>{{ log.setup_start_ist }}</td>
-                                    <td>{{ log.setup_end_ist }}</td>
-                                    <td>{{ log.first_cycle_start_ist }}</td>
-                                    <td>{{ log.last_cycle_end_ist }}</td>
-                                    <td>{{ log.planned }}</td>
-                                    <td>{{ log.completed }}</td>
-                                    <td>{{ log.passed if log.passed is defined else 'N/A' }}</td>
-                                    <td>{{ log.rejected }}</td>
-                                    <td>{{ log.rework }}</td>
-                                    <td>{{ '%.2f'|format(log.std_setup_time) if log.std_setup_time is not none else 'N/A' }}</td>
-                                    <td>{{ '%.2f'|format(log.actual_setup_time) if log.actual_setup_time is not none else 'N/A' }}</td>
-                                    <td>{{ '%.2f'|format(log.std_cycle_time) if log.std_cycle_time is not none else 'N/A' }}</td>
-                                    <td>{{ '%.2f'|format(log.actual_cycle_time) if log.actual_cycle_time is not none else 'N/A' }}</td>
-                                    <td>{{ '%.2f'|format(log.total_cycle_time) if log.total_cycle_time is not none else 'N/A' }}</td>
-                                    <td><span class="badge bg-{{ 'success' if log.fpi_status == 'pass' else 'danger' if log.fpi_status == 'fail' else 'warning' if log.fpi_status == 'rework' else 'secondary' }}">{{ log.fpi_status|capitalize }}</span></td>
-                                    <td><span class="badge bg-{{ 'success' if log.lpi_status == 'pass' else 'danger' if log.lpi_status == 'fail' else 'warning' if log.lpi_status == 'rework' else 'secondary' }}">{{ log.lpi_status|capitalize }}</span></td>
-                                    <td>{{ log.status }}</td>
-                                    <td>{{ log.availability }}</td>
-                                    <td>{{ log.performance }}</td>
-                                    <td>{{ log.quality }}</td>
-                                    <td>{{ log.oee }}</td>
-                                </tr>
-                                {% endfor %}
+                                <!-- Table rows will be rendered by JavaScript -->
                             </tbody>
                         </table>
                     </div>
@@ -115,22 +93,39 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
 <script src="https://cdn.datatables.net/1.10.24/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.10.24/js/dataTables.bootstrap5.min.js"></script>
 <script>
     var socket = io();
     var dprTable;
-    var originalDPRData = {{ dpr_data|tojson|safe }};
+    var originalDPRData = [];
     var connectionStatus = document.getElementById('connectionStatus');
     var lastUpdateTime = new Date();
     
+    // Fetch live DPR data from backend
+    function fetchLiveDPRData() {
+        var date = document.getElementById('dateFilter').value;
+        var url = '/live/dpr/data';
+        if (date) {
+            url += '?date=' + date;
+        }
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                originalDPRData = data.logs || [];
+                updateDPRTable(originalDPRData);
+            });
+    }
+
     // Socket.IO connection handling
     socket.on('connect', function() {
         console.log('Connected to server');
         connectionStatus.style.display = 'none';
         // Request initial data
         socket.emit('request_update');
+        fetchLiveDPRData();
     });
 
     socket.on('disconnect', function() {
@@ -157,12 +152,15 @@
         });
         
         // Apply filters
-        $('#machineFilter, #dateFilter').on('change', function() {
+        $('#machineFilter').on('change', function() {
             filterDPRData();
         });
+        $('#dateFilter').on('change', function() {
+            fetchLiveDPRData();
+        });
         
-        // Initial data load
-        updateDPRTable(originalDPRData);
+        // Initial data load from backend
+        fetchLiveDPRData();
 
         // Check for stale data every minute
         setInterval(function() {
@@ -174,19 +172,17 @@
                 connectionStatus.textContent = 'No updates received for ' + Math.floor(timeSinceLastUpdate) + ' seconds. Data may be stale.';
             }
         }, 60000);
+
+        // Fetch and display available DPR reports on page load
+        fetchAndRenderDprReports();
     });
     
     // Socket.IO event handlers
     socket.on('dpr_update', function(data) {
         console.log('Received DPR update:', data);
-        if (data && data.data) {
-            originalDPRData = data.data;
-            updateDPRTable(originalDPRData);
-            lastUpdateTime = new Date();
-            connectionStatus.style.display = 'none';
-        } else {
-            console.log('Received invalid DPR data:', data);
-        }
+        fetchLiveDPRData();
+        lastUpdateTime = new Date();
+        connectionStatus.style.display = 'none';
     });
 
     function updateDPRTable(data) {
@@ -198,50 +194,49 @@
         var filteredData = filterData(data);
         
         // Add filtered data
-        dprTable.rows.add(filteredData.map(function(item) {
-            return [
+        filteredData.forEach(function(item) {
+            dprTable.row.add([
                 item.date || '',
                 item.mc_do || '',
-                item.operator || '',
+                item.operator || 'N/A',
                 item.proj || '',
                 item.sap_no || '',
                 item.drg_no || '',
-                item.setup_start_ist || '',
-                item.setup_end_ist || '',
-                item.first_cycle_start_ist || '',
-                item.last_cycle_end_ist || '',
+                item.setup_start_utc || '',
+                item.setup_end_utc || '',
+                item.first_cycle_start_utc || '',
+                item.last_cycle_end_utc || '',
                 item.planned || 0,
                 item.completed || 0,
-                item.passed || '',
-                item.rejected || '',
-                item.rework || '',
-                item.std_setup_time || '',
-                item.actual_setup_time || '',
-                item.std_cycle_time || '',
-                item.actual_cycle_time || '',
-                item.total_cycle_time || '',
-                item.fpi_status || '',
-                item.lpi_status || '',
+                item.passed || 'N/A',
+                item.rejected || 0,
+                item.rework || 0,
+                item.std_setup_time ? item.std_setup_time.toFixed(2) : 'N/A',
+                item.actual_setup_time ? item.actual_setup_time.toFixed(2) : 'N/A',
+                item.std_cycle_time ? item.std_cycle_time.toFixed(2) : 'N/A',
+                item.actual_cycle_time ? item.actual_cycle_time.toFixed(2) : 'N/A',
+                item.total_cycle_time ? item.total_cycle_time.toFixed(2) : 'N/A',
+                item.fpi_status || 'N/A',
+                item.lpi_status || 'N/A',
                 item.status || '',
-                item.availability || '',
-                item.performance || '',
-                item.quality || '',
-                item.oee || ''
-            ];
-        }));
+                item.availability || 0,
+                item.performance || 0,
+                item.quality || 0,
+                item.oee || 0
+            ]);
+        });
         
-        // Redraw table
+        // Draw the table
         dprTable.draw();
-        console.log('Table updated');
     }
 
     function filterData(data) {
-        var machine = $('#machineFilter').val();
-        var date = $('#dateFilter').val();
+        var machineFilter = $('#machineFilter').val();
+        var dateFilter = $('#dateFilter').val();
         return data.filter(function(item) {
-            var matchMachine = !machine || item.mc_do === machine;
-            var matchDate = !date || (item.date && item.date.startsWith(date));
-            return matchMachine && matchDate;
+            var matchesMachine = !machineFilter || (item.mc_do && item.mc_do.trim().toLowerCase() === machineFilter.trim().toLowerCase());
+            var matchesDate = !dateFilter || item.date === dateFilter;
+            return matchesMachine && matchesDate;
         });
     }
 
@@ -249,21 +244,40 @@
         updateDPRTable(originalDPRData);
     }
 
+    function downloadDPR() {
+        var date = document.getElementById('dateFilter').value;
+        if (date) {
+            window.location.href = '/live/dpr/download?date=' + date;
+        } else {
+            window.location.href = '/live/dpr/download';
+        }
+    }
+
     function refreshDPR() {
-        console.log('Manually refreshing DPR data');
         socket.emit('request_update');
     }
 
-    function downloadDPR() {
-        window.location.href = "{{ url_for('download_live_dpr') }}";
+    // Fetch and render available DPR reports
+    function fetchAndRenderDprReports() {
+        fetch('/live/dpr/list')
+            .then(response => response.json())
+            .then(data => {
+                var list = document.getElementById('dprReportList');
+                list.innerHTML = '';
+                if (data.reports && data.reports.length > 0) {
+                    data.reports.forEach(function(report) {
+                        var li = document.createElement('li');
+                        li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                        li.innerHTML = `<span>${report.date}</span> <button class='btn btn-sm btn-success' onclick="window.location.href='/live/dpr/download?date=${report.date}'; setTimeout(fetchAndRenderDprReports, 1000);">Download</button>`;
+                        list.appendChild(li);
+                    });
+                } else {
+                    var li = document.createElement('li');
+                    li.className = 'list-group-item';
+                    li.textContent = 'No reports available.';
+                    list.appendChild(li);
+                }
+            });
     }
-
-    // Request updates periodically
-    setInterval(function() {
-        if (socket.connected) {
-            console.log('Requesting periodic update');
-            socket.emit('request_update');
-        }
-    }, 30000);
 </script>
 {% endblock %} 

@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container" id="lpiApp">
+    <h2>Last Piece Inspection</h2>
+    
+    <div class="pending-inspections">
+        <h3>Pending Inspections</h3>
+        <div v-for="transfer in pendingTransfers" :key="transfer.id" class="inspection-card">
+            <div class="card">
+                <div class="card-header">
+                    <h4>SAP ID: {{ transfer.sap_id }}</h4>
+                </div>
+                <div class="card-body">
+                    <div class="transfer-info">
+                        <p>From Machine: {{ transfer.from_machine }}</p>
+                        <p>To Machine: {{ transfer.to_machine }}</p>
+                        <p>Quantity: {{ transfer.quantity }}</p>
+                    </div>
+                    
+                    <form @submit.prevent="submitLPI(transfer.id)" class="lpi-form">
+                        <div class="form-group">
+                            <label>Dimensions Check</label>
+                            <div class="form-check">
+                                <input type="radio" v-model="lpiData[transfer.id].dimensions" value="true" required>
+                                <label>Pass</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="radio" v-model="lpiData[transfer.id].dimensions" value="false">
+                                <label>Fail</label>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Surface Finish</label>
+                            <div class="form-check">
+                                <input type="radio" v-model="lpiData[transfer.id].surface" value="true" required>
+                                <label>Pass</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="radio" v-model="lpiData[transfer.id].surface" value="false">
+                                <label>Fail</label>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Critical Features</label>
+                            <div class="form-check">
+                                <input type="radio" v-model="lpiData[transfer.id].features" value="true" required>
+                                <label>Pass</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="radio" v-model="lpiData[transfer.id].features" value="false">
+                                <label>Fail</label>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Measurements</label>
+                            <div v-for="(measurement, index) in lpiData[transfer.id].measurements" 
+                                 :key="index" 
+                                 class="measurement-input">
+                                <input type="text" v-model="measurement.name" placeholder="Parameter" class="form-control">
+                                <input type="number" v-model="measurement.value" placeholder="Value" class="form-control">
+                                <input type="text" v-model="measurement.unit" placeholder="Unit" class="form-control">
+                            </div>
+                            <button type="button" @click="addMeasurement(transfer.id)" class="btn btn-secondary">
+                                Add Measurement
+                            </button>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Remarks</label>
+                            <textarea v-model="lpiData[transfer.id].remarks" class="form-control"></textarea>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Submit Inspection</button>
+                            <button type="button" @click="rejectTransfer(transfer.id)" class="btn btn-danger">
+                                Reject Transfer
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const app = new Vue({
+    el: '#lpiApp',
+    data: {
+        pendingTransfers: [],
+        lpiData: {}
+    },
+    methods: {
+        async loadPendingTransfers() {
+            try {
+                const response = await fetch('/api/pending-lpi');
+                const data = await response.json();
+                this.pendingTransfers = data.transfers;
+                
+                // Initialize LPI data for each transfer
+                this.pendingTransfers.forEach(transfer => {
+                    if (!this.lpiData[transfer.id]) {
+                        this.$set(this.lpiData, transfer.id, {
+                            dimensions: null,
+                            surface: null,
+                            features: null,
+                            measurements: [],
+                            remarks: ''
+                        });
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading transfers:', error);
+            }
+        },
+        
+        addMeasurement(transferId) {
+            this.lpiData[transferId].measurements.push({
+                name: '',
+                value: null,
+                unit: ''
+            });
+        },
+        
+        async submitLPI(transferId) {
+            try {
+                const lpiResult = this.lpiData[transferId];
+                const allPassed = lpiResult.dimensions === 'true' && 
+                                lpiResult.surface === 'true' && 
+                                lpiResult.features === 'true';
+                
+                const response = await fetch('/api/submit-lpi', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        transfer_id: transferId,
+                        dimensions_ok: lpiResult.dimensions === 'true',
+                        surface_finish_ok: lpiResult.surface === 'true',
+                        critical_features_ok: lpiResult.features === 'true',
+                        measurements: lpiResult.measurements,
+                        remarks: lpiResult.remarks,
+                        result: allPassed ? 'PASS' : 'FAIL'
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.status === 'success') {
+                    alert('LPI submitted successfully');
+                    this.loadPendingTransfers();
+                }
+            } catch (error) {
+                alert('Error submitting LPI: ' + error.message);
+            }
+        },
+        
+        async rejectTransfer(transferId) {
+            if (!confirm('Are you sure you want to reject this transfer?')) return;
+            
+            try {
+                const response = await fetch('/api/reject-transfer', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        transfer_id: transferId,
+                        remarks: this.lpiData[transferId].remarks
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.status === 'success') {
+                    alert('Transfer rejected');
+                    this.loadPendingTransfers();
+                }
+            } catch (error) {
+                alert('Error rejecting transfer: ' + error.message);
+            }
+        }
+    },
+    mounted() {
+        this.loadPendingTransfers();
+        
+        // Set up socket listener for new transfers
+        socket.on('new_transfer', () => {
+            this.loadPendingTransfers();
+        });
+    }
+});
+</script>
+
+<style>
+.inspection-card {
+    margin-bottom: 20px;
+}
+
+.transfer-info {
+    margin-bottom: 15px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.lpi-form {
+    padding: 15px;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.measurement-input {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.form-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+</style>
+{% endblock %} 
