@@ -1,4 +1,8 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from logging.config import fileConfig
+import importlib.util
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -16,7 +20,11 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-from models import db
+models_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'models.py'))
+spec = importlib.util.spec_from_file_location("models", models_path)
+models = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(models)
+db = models.db
 target_metadata = db.metadata
 
 # other values from the config, defined by the needs of env.py,

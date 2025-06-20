@@ -121,8 +121,9 @@
                                 <th width="5%">#</th>
                                 <th width="20%">Operation Type</th>
                                 <th width="20%">Machine Group</th>
-                                <th width="30%">Select Machine</th>
-                                <th width="15%">Status</th>
+                                <th width="20%">Select Machine</th>
+                                <th width="15%">Tool</th>
+                                <th width="10%">Status</th>
                                 <th width="10%" v-if="routeAssign.editingSequence">Actions</th>
                             </tr>
                         </thead>
@@ -145,6 +146,10 @@
                                         <option value="">Select Machine from [[ getMachineGroupLabel(op.operation_type) ]]</option>
                                         <option v-for="machine in getMachinesForType(op.operation_type)" :value="machine" :key="machine">[[ machine ]]</option>
                                     </select>
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control form-control-sm" v-model="op.tool_number" placeholder="Optional tool" @input="validateOpToolInput(op)">
+                                    <div v-if="op.toolError" class="text-danger small mt-1">[[ op.toolError ]]</div>
                                 </td>
                                 <td>
                                     <span v-if="op.status" class="badge" 
@@ -817,8 +822,10 @@ const app = new Vue({
                 assignmentLog: [],
                 progressPercent: 0,
                 progressText: '',
+                toolsInput: '',
+                toolsError: ''
             },
-            assignedRoutes: [],
+            assignedRoutes: []
         };
     },
     async created() {
@@ -1027,7 +1034,6 @@ const app = new Vue({
             this.routeAssign.editingSequence = false;
         },
         async assignRouteToMachines() {
-            // Assign the selected quantity and machines for the whole route (implement /api/assign_route if needed)
             if (!this.routeAssign.selectedRoute) return;
             if (!this.routeAssign.assignQuantity || this.routeAssign.assignQuantity < 1) {
                 this.showError('Please enter a valid quantity to assign.');
@@ -1035,6 +1041,13 @@ const app = new Vue({
             }
             // Only send operations with assigned_machine
             const assignedOps = this.routeAssign.operationSequence.filter(op => op.assigned_machine);
+            // Check for tool errors
+            for (const op of assignedOps) {
+                if (op.toolError) {
+                    this.showError('Please fix tool errors before assigning.');
+                    return;
+                }
+            }
             try {
                 await axios.post('/api/assign_route', {
                     sap_id: this.routeAssign.selectedRoute.sap_id,
@@ -1057,6 +1070,20 @@ const app = new Vue({
         },
         toggleLog() {
             this.routeAssign.showLog = !this.routeAssign.showLog;
+        },
+        validateOpToolInput(op) {
+            if (!op.tool_number) {
+                op.toolError = '';
+                return;
+            }
+            // Allow comma-separated, each tool must be valid
+            const tools = op.tool_number.split(',');
+            const valid = tools.every(tool => tool && /^[A-Z0-9\-_.#@/]+$/.test(tool));
+            if (!valid) {
+                op.toolError = 'Invalid: Use only uppercase, numbers, and -_.#@/ (no spaces, no empty names, comma-separated)';
+            } else {
+                op.toolError = '';
+            }
         },
     }
 });

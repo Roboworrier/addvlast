@@ -420,6 +420,18 @@
         </div>
     </div>
 
+    <!-- Open Operator Logs Section -->
+    <div class="card mb-4">
+        <div class="card-header bg-danger text-white">
+            <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Open Operator Logs</h5>
+        </div>
+        <div class="card-body">
+            <div id="openLogsTableContainer">
+                <p class="text-center text-muted">Loading open logs...</p>
+            </div>
+        </div>
+    </div>
+
     <!-- Active Projects Section -->
     <div class="card mb-4">
         <div class="card-header bg-info text-white">
@@ -878,6 +890,53 @@
         if (e.key === 'Enter') {
             searchDrawing();
         }
+    });
+
+    function fetchOpenLogs() {
+        fetch('/operator_log/open_logs')
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('openLogsTableContainer');
+                if (!data.logs || data.logs.length === 0) {
+                    container.innerHTML = '<p class="text-center text-muted">No open operator logs.</p>';
+                    return;
+                }
+                let html = '<div class="table-responsive"><table class="table table-striped"><thead><tr>' +
+                    '<th>Machine</th><th>Drawing</th><th>Operator</th><th>Shift</th><th>Status</th><th>Created At</th><th>Actions</th></tr></thead><tbody>';
+                data.logs.forEach(log => {
+                    html += `<tr>
+                        <td>${log.machine}</td>
+                        <td>${log.drawing}</td>
+                        <td>${log.operator}</td>
+                        <td>${log.shift}</td>
+                        <td>${log.status.replace(/_/g, ' ')}</td>
+                        <td>${log.created_at}</td>
+                        <td><button class="btn btn-sm btn-danger" onclick="closeLog(${log.id}, this)">Close Log</button></td>
+                    </tr>`;
+                });
+                html += '</tbody></table></div>';
+                container.innerHTML = html;
+            });
+    }
+
+    function closeLog(logId, btn) {
+        btn.disabled = true;
+        fetch(`/operator_log/close_log/${logId}`, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(response => {
+            if (response.ok) {
+                fetchOpenLogs();
+            } else {
+                btn.disabled = false;
+                alert('Failed to close log.');
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        fetchOpenLogs();
     });
 </script>
 {% endblock %}

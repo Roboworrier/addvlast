@@ -48,6 +48,7 @@ from live_routes import init_live_routes
 from route_management import route_bp
 from sqlalchemy import or_
 import string
+from operator_log_management import operator_log_bp
 
 def utc_to_ist(dt):
     """Convert UTC datetime to IST"""
@@ -1297,10 +1298,18 @@ def machine_shop_assign():
         drawing_number = request.form.get('drawing_number')
         machine_id = request.form.get('machine_id')
         quantity = int(request.form.get('quantity'))
-        tool_number = request.form.get('tool_number')
-        # Validate inputs
-        if not all([drawing_number, machine_id, quantity, tool_number]):
-            flash('All fields are required.', 'danger')
+        tool_number = request.form.get('tool_number', '')
+        # Tool validation (optional, but if present must be valid)
+        if tool_number:
+            tools = tool_number.split(',')
+            import re
+            valid = all(tool and re.match(r'^[A-Z0-9\-_.#@/]+$', tool) for tool in tools)
+            if not valid:
+                flash('Invalid tool format: Use only uppercase, numbers, and -_.#@/ (no spaces, no empty names)', 'danger')
+                return redirect(url_for('machine_shop'))
+        # Validate other inputs
+        if not all([drawing_number, machine_id, quantity]):
+            flash('Drawing number, machine, and quantity are required.', 'danger')
             return redirect(url_for('machine_shop'))
         # Get drawing and machine
         # --- PATCH START: Ensure EndProduct exists for SAP ID ---
@@ -1608,6 +1617,24 @@ def live_dpr():
             cycle_start = ensure_timezone_aware(log.first_cycle_start_time) if log.first_cycle_start_time else None
             cycle_end = ensure_timezone_aware(log.last_cycle_end_time) if log.last_cycle_end_time else None
             
+            # Find the assignment for this machine and drawing
+            assignment = None
+            if log.machine_id and log.drawing_id:
+                assignment = db.session.query(MachineDrawingAssignment).filter_by(
+                    machine_id=log.machine_id,
+                    drawing_id=log.drawing_id
+                ).order_by(MachineDrawingAssignment.assigned_at.desc()).first()
+            # Use assignment_id if present, else fallback to old lookup
+            if getattr(log, 'assignment_id', None):
+                tool_number = log.assignment.tool_number if log.assignment else ''
+            else:
+                assignment = None
+                if log.machine_id and log.drawing_id:
+                    assignment = db.session.query(MachineDrawingAssignment).filter_by(
+                        machine_id=log.machine_id,
+                        drawing_id=log.drawing_id
+                    ).order_by(MachineDrawingAssignment.assigned_at.desc()).first()
+                tool_number = assignment.tool_number if assignment else ''
             formatted_logs.append({
                 'date': log.created_at.strftime('%Y-%m-%d'),
                 'mc_do': machine.name if machine else 'Unknown',
@@ -1635,7 +1662,8 @@ def live_dpr():
                 'availability': log.availability,
                 'performance': log.performance,
                 'quality': log.quality_rate,
-                'oee': log.oee
+                'oee': log.oee,
+                'tool_number': tool_number,
             })
         
         return render_template('live_dpr.html',
@@ -1669,7 +1697,7 @@ def live_dpr_download():
         from io import StringIO
         si = StringIO()
         writer = csv.writer(si)
-        writer.writerow(['Date', 'Machine', 'Operator', 'Project', 'SAP No', 'Drawing No', 'Setup Start', 'Setup End', 'First Cycle Start', 'Last Cycle End', 'Planned', 'Completed', 'Passed', 'Rejected', 'Rework', 'Std Setup Time', 'Actual Setup Time', 'Std Cycle Time', 'Actual Cycle Time', 'Total Cycle Time', 'FPI Status', 'LPI Status', 'Status', 'Availability', 'Performance', 'Quality', 'OEE'])
+        writer.writerow(['Date', 'Machine', 'Operator', 'Project', 'SAP No', 'Drawing No', 'Tool', 'Setup Start', 'Setup End', 'First Cycle Start', 'Last Cycle End', 'Planned', 'Completed', 'Passed', 'Rejected', 'Rework', 'Std Setup Time', 'Actual Setup Time', 'Std Cycle Time', 'Actual Cycle Time', 'Total Cycle Time', 'FPI Status', 'LPI Status', 'Status', 'Availability', 'Performance', 'Quality', 'OEE'])
         for log in logs:
             machine = Machine.query.get(log.machine_id) if log.machine_id else None
             drawing = log.drawing_rel
@@ -1681,6 +1709,23 @@ def live_dpr_download():
             setup_end = ensure_timezone_aware(log.setup_end_time) if log.setup_end_time else None
             cycle_start = ensure_timezone_aware(log.first_cycle_start_time) if log.first_cycle_start_time else None
             cycle_end = ensure_timezone_aware(log.last_cycle_end_time) if log.last_cycle_end_time else None
+            assignment = None
+            if log.machine_id and log.drawing_id:
+                assignment = db.session.query(MachineDrawingAssignment).filter_by(
+                    machine_id=log.machine_id,
+                    drawing_id=log.drawing_id
+                ).order_by(MachineDrawingAssignment.assigned_at.desc()).first()
+            # Use assignment_id if present, else fallback to old lookup
+            if getattr(log, 'assignment_id', None):
+                tool_number = log.assignment.tool_number if log.assignment else ''
+            else:
+                assignment = None
+                if log.machine_id and log.drawing_id:
+                    assignment = db.session.query(MachineDrawingAssignment).filter_by(
+                        machine_id=log.machine_id,
+                        drawing_id=log.drawing_id
+                    ).order_by(MachineDrawingAssignment.assigned_at.desc()).first()
+                tool_number = assignment.tool_number if assignment else ''
             writer.writerow([
                 log.created_at.strftime('%Y-%m-%d'),
                 machine.name if machine else 'Unknown',
@@ -1688,6 +1733,7 @@ def live_dpr_download():
                 project.project_code if project else 'Unknown',
                 end_product.sap_id if end_product else 'Unknown',
                 drawing.drawing_number if drawing else 'Unknown',
+                tool_number,
                 setup_start.strftime('%H:%M:%S') if setup_start else '',
                 setup_end.strftime('%H:%M:%S') if setup_end else '',
                 cycle_start.strftime('%H:%M:%S') if cycle_start else '',
@@ -2675,13 +2721,20 @@ def operator_panel_common(machine_name, template_name):
                 batch_id = request.form.get('batch_id')
                 if not batch_id:
                     batch_id = generate_batch_id(form_drawing_number)
+                # Find the most recent assignment for this machine/drawing
+                assignment = MachineDrawingAssignment.query.filter_by(
+                    machine_id=machine.id,
+                    drawing_id=drawing.id,
+                    status='assigned'
+                ).order_by(MachineDrawingAssignment.assigned_at.desc()).first()
                 new_log = OperatorLog(
                     operator_session_id=active_session.id,
                     drawing_id=drawing.id,
                     current_status='setup_started',
                     run_planned_quantity=0,
                     run_completed_quantity=0,
-                    batch_id=batch_id
+                    batch_id=batch_id,
+                    assignment_id=assignment.id if assignment else None
                 )
                 db.session.add(new_log)
                 db.session.commit()
@@ -2714,6 +2767,11 @@ def operator_panel_common(machine_name, template_name):
             elif action == 'cycle_complete':
                 if current_log and current_log.current_status == 'cycle_started':
                     is_first_piece = (current_log.run_completed_quantity == 0)
+                    is_last_piece = (current_log.run_completed_quantity + 1 >= current_log.run_planned_quantity)
+                    # Check if LPI is required for this product
+                    lpi_required = False
+                    if current_log.drawing_rel and current_log.drawing_rel.end_product_rel:
+                        lpi_required = getattr(current_log.drawing_rel.end_product_rel, 'is_last_piece_lpi_required', False)
                     if not is_first_piece and current_log.fpi_status not in ['pass', 'passed']:
                         flash('FPI must be passed before completing cycle for this batch.', 'danger')
                         return redirect(request.url)
@@ -2722,6 +2780,11 @@ def operator_panel_common(machine_name, template_name):
                         current_log.current_status = 'cycle_completed_pending_fpi'
                         db.session.commit()
                         flash('First piece completed. Awaiting FPI (First Piece Inspection).', 'info')
+                        return redirect(request.url)
+                    elif is_last_piece and lpi_required:
+                        current_log.current_status = 'lpi_pending'
+                        db.session.commit()
+                        flash('Last piece completed. Awaiting LPI (Last Piece Inspection).', 'info')
                         return redirect(request.url)
                     else:
                         current_log.current_status = 'cycle_completed'
@@ -3355,6 +3418,18 @@ def digital_twin_dashboard():
         todays_production = 0
         quality_rate = 0
         for machine in machines:
+            # Get all sessions for today
+            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            sessions_today = OperatorSession.query.filter(
+                OperatorSession.machine_id == machine.id,
+                OperatorSession.start_time >= today_start
+            ).all()
+            status_duration = 0.0
+            for session in sessions_today:
+                start = ensure_timezone_aware(session.start_time)
+                end = ensure_timezone_aware(session.end_time) if session.end_time else now
+                status_duration += (end - start).total_seconds() / 3600
+            status_duration = round(status_duration, 1)
             current_session = OperatorSession.query.filter_by(
                 machine_id=machine.id,
                 end_time=None
@@ -3406,9 +3481,16 @@ def digital_twin_dashboard():
                 'current_operator': current_operator,
                 'current_session': {
                     'start_time': ensure_timezone_aware(current_session.start_time) if current_session else None,
-                    'parts_completed': current_session.total_parts if current_session else 0
+                    'parts_completed': current_log.run_completed_quantity if current_log else (current_session.total_parts if current_session else 0)
                 } if current_session else None,
-                'current_job': current_job,
+                'current_job': {
+                    'drawing_number': current_log.drawing_rel.drawing_number if current_log and current_log.drawing_rel else 'N/A',
+                    'sap_id': current_log.drawing_rel.sap_id if current_log and current_log.drawing_rel else 'N/A',
+                    'product_name': current_log.end_product_sap_id_rel.name if current_log and current_log.end_product_sap_id_rel else 'Unknown'
+                } if current_log else None,
+                'setup_time': round((current_log.setup_end_time - current_log.setup_start_time).total_seconds() / 60, 2) if current_log and current_log.setup_start_time and current_log.setup_end_time else None,
+                'run_time': round((current_log.last_cycle_end_time - current_log.first_cycle_start_time).total_seconds() / 60, 2) if current_log and current_log.first_cycle_start_time and current_log.last_cycle_end_time else None,
+                'status_duration': status_duration,
                 'last_updated': ensure_timezone_aware(datetime.now())
             }
             machine_data.append(machine_metrics)
@@ -3824,7 +3906,7 @@ def operator_panel(machine_name):
         # Get current operator log (all active statuses)
         current_log = OperatorLog.query.filter(
             OperatorLog.operator_session_id == active_session.id if active_session else None,
-            OperatorLog.current_status.in_(['setup_started', 'setup_done', 'cycle_started', 'cycle_paused', 'fpi_passed_ready_for_cycle', 'cycle_completed', 'cycle_completed_pending_fpi'])
+            OperatorLog.current_status.in_(['setup_started', 'setup_done', 'cycle_started', 'cycle_paused', 'fpi_passed_ready_for_cycle', 'cycle_completed', 'cycle_completed_pending_fpi', 'lpi_pending'])
         ).order_by(OperatorLog.created_at.desc()).first()
         if request.method == 'POST':
             action = request.form.get('action')
@@ -3892,6 +3974,11 @@ def operator_panel(machine_name):
             elif action == 'cycle_complete':
                 if current_log and current_log.current_status == 'cycle_started':
                     is_first_piece = (current_log.run_completed_quantity == 0)
+                    is_last_piece = (current_log.run_completed_quantity + 1 >= current_log.run_planned_quantity)
+                    # Check if LPI is required for this product
+                    lpi_required = False
+                    if current_log.drawing_rel and current_log.drawing_rel.end_product_rel:
+                        lpi_required = getattr(current_log.drawing_rel.end_product_rel, 'is_last_piece_lpi_required', False)
                     if not is_first_piece and current_log.fpi_status not in ['pass', 'passed']:
                         flash('FPI must be passed before completing cycle for this batch.', 'danger')
                         return redirect(request.url)
@@ -3900,6 +3987,11 @@ def operator_panel(machine_name):
                         current_log.current_status = 'cycle_completed_pending_fpi'
                         db.session.commit()
                         flash('First piece completed. Awaiting FPI (First Piece Inspection).', 'info')
+                        return redirect(request.url)
+                    elif is_last_piece and lpi_required:
+                        current_log.current_status = 'lpi_pending'
+                        db.session.commit()
+                        flash('Last piece completed. Awaiting LPI (Last Piece Inspection).', 'info')
                         return redirect(request.url)
                     else:
                         current_log.current_status = 'cycle_completed'
@@ -3921,6 +4013,15 @@ def operator_panel(machine_name):
                     flash('Setup marked as done.', 'success')
                 else:
                     flash('No setup in progress to mark as done.', 'warning')
+                return redirect(request.url)
+            elif action == 'select_drawing_and_start_session':
+                if not active_drawing:
+                    session.pop('current_drawing_number', None)
+                    flash('Drawing not found or not assigned to this machine.', 'danger')
+                    return redirect(request.url)
+                session['current_drawing_number'] = drawing_number
+                session.modified = True
+                flash(f'Drawing {drawing_number} selected.', 'success')
                 return redirect(request.url)
         # For GET requests or after POST, always render the panel
         drawing_number = session.get('current_drawing_number')
@@ -4065,6 +4166,7 @@ def handle_quality_status_change(data):
 
 # Register blueprints
 app.register_blueprint(route_bp)
+app.register_blueprint(operator_log_bp)
 
 @app.route('/part-finder')
 @login_required
@@ -4242,3 +4344,67 @@ def batch_history():
 def update_current_operation_and_create_next_operation(machine_name, current_operation, shipped_quantity, next_operation, next_machines):
     # TODO: Implement operation routing logic
     pass
+
+@app.route('/api/assign_route', methods=['POST'])
+@login_required
+def api_assign_route():
+    """Assign route operations to machines with per-operation tool assignment"""
+    if not (current_user.is_plant_head or current_user.is_manager):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    try:
+        data = request.get_json()
+        sap_id = data.get('sap_id')
+        quantity = int(data.get('quantity', 0))
+        operations = data.get('operations', [])
+        if not sap_id or not quantity or not operations:
+            return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+        # Get or create drawing
+        drawing = MachineDrawing.query.filter(
+            db.or_(func.trim(MachineDrawing.drawing_number) == sap_id.strip(), func.trim(MachineDrawing.sap_id) == sap_id.strip())
+        ).first()
+        if not drawing:
+            drawing = MachineDrawing(
+                drawing_number=sap_id.strip(),
+                sap_id=sap_id.strip()
+            )
+            db.session.add(drawing)
+            db.session.flush()
+        # Assign each operation
+        for op in operations:
+            machine_name = op.get('assigned_machine')
+            tool_number = op.get('tool_number', '')
+            if not machine_name:
+                continue  # skip if no machine assigned
+            machine = Machine.query.filter_by(name=machine_name).first()
+            if not machine:
+                continue  # skip if machine not found
+            # Validate tool_number (optional, but if present must be valid)
+            if tool_number:
+                tools = tool_number.split(',')
+                import re
+                valid = all(tool and re.match(r'^[A-Z0-9\-_.#@/]+$', tool) for tool in tools)
+                if not valid:
+                    return jsonify({'success': False, 'error': f'Invalid tool format for {machine_name}: Use only uppercase, numbers, and -_.#@/ (no spaces, no empty names)'}), 400
+            assignment = MachineDrawingAssignment(
+                drawing_id=drawing.id,
+                machine_id=machine.id,
+                assigned_quantity=quantity,
+                tool_number=tool_number,
+                status='assigned',
+                assigned_by=current_user.id,
+                assigned_at=datetime.now(timezone.utc)
+            )
+            db.session.add(assignment)
+        db.session.commit()
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/debug/operator_log_schema')
+def debug_operator_log_schema():
+    from sqlalchemy import inspect
+    inspector = inspect(db.engine)
+    columns = inspector.get_columns('operator_log')
+    return '<br>'.join(f"{col['name']} ({col['type']})" for col in columns)
+#last line 4410

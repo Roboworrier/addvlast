@@ -294,7 +294,7 @@
                             <!-- Setup Actions -->
                             <div class="col-md-6 col-xl-4">
                                 {% set allow_new_setup = machine_operational and active_drawing and (not current_log or current_log.current_status in ['cycle_completed', 'lpi_completed', 'admin_closed']) %}
-                                {% if current_log and current_log.current_status not in ['cycle_completed', 'lpi_completed', 'admin_closed'] %}
+                                {% if current_log and current_log.current_status not in ['cycle_completed', 'lpi_completed', 'admin_closed'] and current_log.drawing_id == active_drawing.id %}
                                     {% set allow_new_setup = false %}
                                 {% endif %}
                                 <button type="submit" name="action" value="start_setup" class="btn btn-lg btn-outline-primary w-100"

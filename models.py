@@ -83,6 +83,7 @@ class OperatorLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     drawing_number = db.Column(db.String(100))
     drawing_id = db.Column(db.Integer, db.ForeignKey('machine_drawing.id'), nullable=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey('machine_drawing_assignment.id'), nullable=True)
     
     # Batch tracking fields
     batch_id = db.Column(db.Integer, db.ForeignKey('batch.id'))  # Now integer FK
@@ -161,6 +162,7 @@ class OperatorLog(db.Model):
     # Relationships
     end_product_sap_id_rel = relationship("EndProduct", back_populates="operator_logs_for_sap")
     drawing_rel = relationship("MachineDrawing", back_populates="operator_logs")
+    assignment = relationship("MachineDrawingAssignment", backref="operator_logs")
     quality_checks = relationship('QualityCheck', backref='operator_log', lazy=True)
     rework_items_sourced = relationship("ReworkQueue", foreign_keys='ReworkQueue.source_operator_log_id', back_populates="source_operator_log_rel")
     rework_attempt_for_queue = relationship("ReworkQueue", foreign_keys='ReworkQueue.assigned_operator_log_id', back_populates="assigned_operator_log_rel", uselist=False)
@@ -492,3 +494,16 @@ class Batch(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), default=datetime.now(timezone.utc))
     batch_quantity = db.Column(db.Integer, default=0)
     # Add relationship if needed 
+
+class OperatorLogAction(db.Model):
+    __tablename__ = 'operator_log_action'
+    id = db.Column(db.Integer, primary_key=True)
+    log_id = db.Column(db.Integer, db.ForeignKey('operator_log.id'), nullable=False)
+    operator_name = db.Column(db.String(100), nullable=False)
+    shift = db.Column(db.String(20), nullable=False)
+    action_type = db.Column(db.String(50), nullable=False)
+    quantity = db.Column(db.Integer, nullable=True)
+    timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f'<OperatorLogAction {self.id} {self.operator_name} {self.action_type}>' 

@@ -240,7 +240,7 @@ def generate_detailed_dpr_csv(logs):
         writer = csv.writer(output)
         # Write headers (match live_dpr.html table)
         writer.writerow([
-            'Date (UTC)', 'Machine', 'Operator', 'Project', 'SAP ID', 'Drawing No',
+            'Date (UTC)', 'Machine', 'Operator', 'Shift', 'Project', 'SAP ID', 'Drawing No',
             'Setup Start (UTC)', 'Setup End (UTC)', 'First Cycle Start (UTC)', 'Last Cycle End (UTC)',
             'Assigned Qty', 'Completed Qty', 'Passed Qty', 'Rejected Qty', 'Rework Qty',
             'Std. Setup (min)', 'Actual Setup (min)', 'Std. Cycle (min)', 'Actual Cycle (min)', 'Total Cycle (min)',
@@ -252,6 +252,7 @@ def generate_detailed_dpr_csv(logs):
                     str(log.get('date', '') or ''),
                     str(log.get('mc_do', '') or ''),
                     str(log.get('operator', '') or ''),
+                    str(log.get('shift', '') or ''),
                     str(log.get('proj', '') or ''),
                     str(log.get('sap_no', '') or ''),
                     str(log.get('drg_no', '') or ''),
