@@ -1209,39 +1209,8 @@ def machine_shop():
             joinedload(MachineDrawingAssignment.drawing_rel).joinedload(MachineDrawing.end_product_rel)
         ).all()
 
-        print('DEBUG: Assignments for machine shop page:')
-        for a in assignments:
-            print(f"ID={a.id}, Drawing={a.drawing_id}, Machine={a.machine_id}, Qty={a.assigned_quantity}, "
-                  f"Status={a.status}, "
-                  f"MachineName={getattr(a.machine_rel, 'name', None)}, "
-                  f"DrawingNum={getattr(a.drawing_rel, 'drawing_number', None)}")
-
-        # This loop is safe even if some relations are None
         for assignment in assignments:
-            if assignment.drawing_rel and assignment.drawing_rel.id:
-                pass  # (optional) more processing here if needed
-
-        return render_template("machine_shop.html", machines=all_machines, assignments=assignments)
-
-    except Exception as e:
-        print(f"Error in /machine_shop: {e}")
-        flash('An unexpected error occurred while loading the machine shop view.', 'danger')
-        return redirect(url_for('login_general'))
-
-    try:
-        # Flat list of all machines
-        all_machines = Machine.query.all()
-        # Show ALL assignments, regardless of status
-        assignments = db.session.query(
-            MachineDrawingAssignment
-        ).options(
-            joinedload(MachineDrawingAssignment.machine_rel),
-            joinedload(MachineDrawingAssignment.drawing_rel).joinedload(MachineDrawing.end_product_rel)
-        ).all()
-        print('DEBUG: Assignments for machine shop page:')
-        for a in assignments:
-            print(f"ID={a.id}, Drawing={a.drawing_id}, Machine={a.machine_id}, Qty={a.assigned_quantity}, Status={a.status}, MachineName={a.machine_rel.name if a.machine_rel else None}, DrawingNum={a.drawing_rel.drawing_number if a.drawing_rel else None}")
-        for assignment in assignments:
+            # Safely compute total assigned quantity
             if assignment.drawing_rel and assignment.drawing_rel.id:
                 total_assigned = db.session.query(func.sum(MachineDrawingAssignment.assigned_quantity)).filter(
                     MachineDrawingAssignment.drawing_id == assignment.drawing_rel.id
@@ -1249,10 +1218,12 @@ def machine_shop():
                 assignment.total_assigned = total_assigned
             else:
                 assignment.total_assigned = None
-        # Route data for Vue (if needed)
+
+        # Collect route data
         routes = ProcessRoute.query.filter(
             ProcessRoute.status.in_(['PENDING', 'IN_PROGRESS'])
         ).all()
+
         routes_data = []
         for route in routes:
             route_data = {
@@ -1274,6 +1245,8 @@ def machine_shop():
                 }
                 route_data['operations'].append(op_data)
             routes_data.append(route_data)
+
+        # Final render
         return render_template(
             'machine_shop.html',
             machines=all_machines,
@@ -1281,9 +1254,12 @@ def machine_shop():
             total_assignments=len(assignments),
             running_jobs=sum(1 for a in assignments if a.status == 'running'),
             pending_assignments=sum(1 for a in assignments if a.status == 'assigned'),
-            completed_today=sum(1 for a in assignments if a.status == 'completed' and a.completed_at and a.completed_at.date() == datetime.now().date()),
+            completed_today=sum(
+                1 for a in assignments if a.status == 'completed' and a.completed_at and a.completed_at.date() == datetime.now().date()
+            ),
             routes=routes_data
         )
+
     except Exception as e:
         app.logger.error(f'Error in machine shop view: {str(e)}')
         flash('An error occurred while loading the machine shop view.', 'danger')
