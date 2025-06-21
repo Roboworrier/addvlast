@@ -1,15 +1,6 @@
-import eventlet
-eventlet.monkey_patch()
-import os
+# run.py
+
 from app import app, socketio
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5001))
-    host = os.environ.get('HOST', '0.0.0.0')
-
-    try:
-        app.logger.info('ChipSight startup on fixed port %d', port)
-        socketio.run(app, host=host, port=port, debug=True)
-    except Exception as e:
-        app.logger.error(f'Failed to start server: {str(e)}')
-        raise
+# This file is used by Gunicorn to serve the app
+# Example: gunicorn -k eventlet -w 1 -b 0.0.0.0:5001 run:app
